@@ -211,6 +211,17 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
 .cat-mgmt-tag{font-size:10px;color:var(--text3);background:var(--surface2);padding:2px 8px;border-radius:10px}
 
 /* TOAST */
+.import-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border-soft);font-size:13px}
+.import-row:last-child{border-bottom:none}
+.import-row-skip{opacity:0.4}
+.import-row-toggle{width:20px;height:20px;border-radius:50%;border:2px solid var(--border);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--bg)}
+.import-row-toggle.on{background:var(--moss);border-color:var(--moss)}
+.import-row-body{flex:1;min-width:0}
+.import-row-desc{font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.import-row-meta{font-size:11px;color:var(--text3);margin-top:1px}
+.import-row-right{text-align:right;flex-shrink:0}
+.import-row-amt{font-family:'DM Mono',monospace;font-weight:500}
+.import-row-cat{font-size:10px;color:var(--text3);margin-top:2px}
 #toast{position:fixed;bottom:76px;left:50%;transform:translateX(-50%) translateY(10px);background:var(--moss);color:#fff;padding:10px 20px;border-radius:30px;font-size:13px;font-weight:600;z-index:300;opacity:0;transition:all 0.22s;pointer-events:none;white-space:nowrap;box-shadow:0 4px 16px rgba(45,90,61,0.3)}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 </style>
@@ -275,10 +286,14 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
       <div class="acct-detail-bal" id="adBal"></div>
       <div class="acct-stats" id="adStats"></div>
     </div>
-    <div class="add-tx-bar">
-      <button class="add-tx-btn" onclick="openSheet('addTx')">
+    <div class="add-tx-bar" style="display:flex;gap:8px">
+      <button class="add-tx-btn" style="flex:1" onclick="openSheet('addTx')">
         <div class="add-tx-icon">+</div>
         <span class="add-tx-text">Add income or expense…</span>
+      </button>
+      <button onclick="openSheet('importCSV')" title="Import bank statement" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 14px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--text2);font-family:'DM Sans',sans-serif;transition:all 0.15s" onmouseover="this.style.borderColor='var(--moss-light)'" onmouseout="this.style.borderColor='var(--border)'">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Import
       </button>
     </div>
     <div class="tx-list" id="txList"></div>
@@ -448,6 +463,49 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
   </div>
 </div>
 
+
+<!-- Import CSV Sheet -->
+<div class="sheet-bg" id="sheet-importCSV" onclick="closeSheetBg(event,'importCSV')">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title"><span>Import Bank Statement</span><button class="sheet-close" onclick="closeSheet('importCSV')">×</button></div>
+    <div class="sheet-body">
+      <!-- Step 1: Upload -->
+      <div id="importStep1">
+        <p style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:16px">
+          Upload a CSV exported from your bank. Fika auto-detects Chase, Bank of America, Capital One, Wells Fargo, Amex, Citi, TD Bank and more — and uses AI to categorize each transaction.
+        </p>
+        <div id="csvDropZone" onclick="document.getElementById('csvFileInput').click()" style="border:2px dashed var(--border);border-radius:var(--radius);padding:32px 20px;text-align:center;cursor:pointer;transition:all 0.15s;margin-bottom:14px">
+          <div style="font-size:32px;margin-bottom:8px">📄</div>
+          <div style="font-size:14px;font-weight:600;color:var(--text2);margin-bottom:4px">Tap to select CSV file</div>
+          <div style="font-size:12px;color:var(--text3)">Exported from your bank's website</div>
+        </div>
+        <input type="file" id="csvFileInput" accept=".csv,.txt" style="display:none" onchange="handleCSVFile(this)">
+        <div class="form-group">
+          <div class="form-label">Import into account</div>
+          <select class="form-select" id="importAccount"></select>
+        </div>
+      </div>
+
+      <!-- Step 2: Preview & confirm -->
+      <div id="importStep2" style="display:none">
+        <div id="importBankDetected" style="background:var(--moss-pale);border:1px solid var(--moss-light);border-radius:var(--radius-sm);padding:10px 14px;font-size:13px;font-weight:600;color:var(--moss);margin-bottom:12px;display:flex;align-items:center;gap:8px">
+          <span>🏦</span><span id="importBankName"></span>
+        </div>
+        <div id="importAiStatus" style="font-size:12px;color:var(--text3);margin-bottom:10px;display:flex;align-items:center;gap:8px">
+          <div class="ai-dot" style="flex-shrink:0"></div>
+          <span id="importAiMsg">Categorizing with AI…</span>
+        </div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:8px;font-weight:600" id="importPreviewCount"></div>
+        <div id="importPreviewList" style="max-height:340px;overflow-y:auto;border:1px solid var(--border-soft);border-radius:var(--radius-sm)"></div>
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <button class="ghost-btn" style="flex:1" onclick="resetImport()">← Back</button>
+          <button class="pri-btn" style="flex:2;margin-top:0" id="importConfirmBtn" onclick="confirmImport()">Import All</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 <div id="toast"></div>
 
 <script>
@@ -702,6 +760,7 @@ function openSheet(name){
     document.getElementById('goalSheetTitle').textContent='Add Goal';
     ['goalName','goalTarget','goalCurrent','goalDate'].forEach(function(id){document.getElementById(id).value='';});
   }
+  if(name==='importCSV'){openImportSheet();return;}
   if(name==='manageCats'){renderCatMgmt();buildParentSelect();}
   document.getElementById('sheet-'+name).classList.add('open');
 }
@@ -1132,6 +1191,338 @@ var _localSave = save;
 function save() {
   _localSave();
   syncToFirestore();
+}
+
+
+// ══════════════════════════════════════════════
+// ── CSV IMPORT ENGINE ──
+// ══════════════════════════════════════════════
+
+var importedRows = [];   // parsed + categorized rows
+var importToggled = {};  // which rows to include (all true by default)
+
+// ── KNOWN BANK FORMATS ──
+var BANK_FORMATS = [
+  {
+    name: 'Chase',
+    detect: function(headers){ return headers.indexOf('Transaction Date') > -1 && headers.indexOf('Post Date') > -1 && headers.indexOf('Category') > -1; },
+    dateCol: 'Transaction Date', descCol: 'Description', amountCol: 'Amount',
+    amountSign: 'negative_is_expense'  // Chase: negative = expense, positive = income/refund
+  },
+  {
+    name: 'Bank of America',
+    detect: function(headers){ return headers.indexOf('Date') > -1 && headers.indexOf('Payee') > -1 && headers.indexOf('Posting Date') > -1; },
+    dateCol: 'Date', descCol: 'Payee', amountCol: 'Amount',
+    amountSign: 'negative_is_expense'
+  },
+  {
+    name: 'Capital One',
+    detect: function(headers){ return headers.indexOf('Transaction Date') > -1 && headers.indexOf('Debit') > -1 && headers.indexOf('Credit') > -1; },
+    dateCol: 'Transaction Date', descCol: 'Description',
+    debitCol: 'Debit', creditCol: 'Credit',
+    splitDebitCredit: true
+  },
+  {
+    name: 'Wells Fargo',
+    detect: function(headers){ return headers.length >= 5 && headers[0] === '' && !isNaN(Date.parse(headers[0])); },
+    isPositional: true,
+    cols: [0,4,1],  // date, description, amount
+    amountSign: 'negative_is_expense'
+  },
+  {
+    name: 'American Express',
+    detect: function(headers){ return headers.indexOf('Date') > -1 && headers.indexOf('Description') > -1 && headers.indexOf('Amount') > -1 && headers.indexOf('Card Member') > -1; },
+    dateCol: 'Date', descCol: 'Description', amountCol: 'Amount',
+    amountSign: 'positive_is_expense'  // Amex flips sign
+  },
+  {
+    name: 'Citi',
+    detect: function(headers){ return headers.indexOf('Date') > -1 && headers.indexOf('Description') > -1 && headers.indexOf('Debit') > -1 && headers.indexOf('Credit') > -1; },
+    dateCol: 'Date', descCol: 'Description',
+    debitCol: 'Debit', creditCol: 'Credit',
+    splitDebitCredit: true
+  },
+  {
+    name: 'TD Bank',
+    detect: function(headers){ return headers.indexOf('Date') > -1 && headers.indexOf('Description') > -1 && headers.indexOf('Debit') > -1 && headers.indexOf('Credit') > -1 && headers.indexOf('Balance') > -1; },
+    dateCol: 'Date', descCol: 'Description',
+    debitCol: 'Debit', creditCol: 'Credit',
+    splitDebitCredit: true
+  },
+  {
+    name: 'Generic CSV',
+    detect: function(){ return true; },  // fallback
+    dateCol: null, descCol: null, amountCol: null,
+    isGeneric: true
+  }
+];
+
+function detectBank(headers) {
+  for (var i = 0; i < BANK_FORMATS.length; i++) {
+    if (BANK_FORMATS[i].detect(headers)) return BANK_FORMATS[i];
+  }
+  return BANK_FORMATS[BANK_FORMATS.length - 1];
+}
+
+// ── CSV PARSER ──
+function parseCSV(text) {
+  var lines = text.split(/\r?\n/).filter(function(l){ return l.trim(); });
+  var rows = lines.map(function(line){
+    var result = [], cur = '', inQuote = false;
+    for (var i = 0; i < line.length; i++) {
+      var c = line[i];
+      if (c === '"') { inQuote = !inQuote; }
+      else if (c === ',' && !inQuote) { result.push(cur.trim()); cur = ''; }
+      else { cur += c; }
+    }
+    result.push(cur.trim());
+    return result;
+  });
+  return rows;
+}
+
+// ── OPEN IMPORT SHEET ──
+function openImportSheet() {
+  // populate account select
+  var sel = document.getElementById('importAccount');
+  sel.innerHTML = state.accounts.map(function(a){
+    return '<option value="'+a.id+'">'+esc(a.name)+'</option>';
+  }).join('');
+  if (activeAcctId) sel.value = activeAcctId;
+  resetImport();
+  openSheet('importCSV');
+}
+
+function resetImport() {
+  importedRows = []; importToggled = {};
+  document.getElementById('importStep1').style.display = '';
+  document.getElementById('importStep2').style.display = 'none';
+  document.getElementById('csvFileInput').value = '';
+  var dz = document.getElementById('csvDropZone');
+  dz.style.borderColor = 'var(--border)';
+  dz.style.background = '';
+}
+
+// ── HANDLE FILE ──
+function handleCSVFile(input) {
+  var file = input.files[0]; if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) { processCSV(e.target.result); };
+  reader.readAsText(file);
+}
+
+function processCSV(text) {
+  var rows = parseCSV(text);
+  if (rows.length < 2) { toast('CSV appears empty'); return; }
+  var headers = rows[0].map(function(h){ return h.replace(/^"|"$/g,''); });
+  var dataRows = rows.slice(1).filter(function(r){ return r.join('').trim(); });
+  var fmt = detectBank(headers);
+
+  document.getElementById('importBankName').textContent = 'Detected: ' + fmt.name;
+  document.getElementById('importStep1').style.display = 'none';
+  document.getElementById('importStep2').style.display = '';
+  document.getElementById('importConfirmBtn').disabled = true;
+
+  var parsed = [];
+
+  if (fmt.isGeneric) {
+    // Best-guess: find date-like, amount-like, description-like columns
+    var dateIdx = -1, amtIdx = -1, descIdx = -1;
+    headers.forEach(function(h, i){
+      var hl = h.toLowerCase();
+      if (dateIdx < 0 && (hl.includes('date'))) dateIdx = i;
+      if (amtIdx < 0 && (hl.includes('amount') || hl.includes('debit') || hl.includes('credit'))) amtIdx = i;
+      if (descIdx < 0 && (hl.includes('desc') || hl.includes('memo') || hl.includes('payee') || hl.includes('narr'))) descIdx = i;
+    });
+    dataRows.forEach(function(row){
+      var date = dateIdx > -1 ? row[dateIdx] : '';
+      var desc = descIdx > -1 ? row[descIdx] : row.join(' ');
+      var amt = amtIdx > -1 ? parseFloat(row[amtIdx].replace(/[,$]/g,'')) : 0;
+      if (!desc || isNaN(amt) || amt === 0) return;
+      parsed.push({ date: normalizeDate(date), description: desc.replace(/^"|"$/g,''), amount: Math.abs(amt), type: amt < 0 ? 'expense' : 'income', category: null });
+    });
+  } else if (fmt.splitDebitCredit) {
+    var hi = {};  headers.forEach(function(h,i){ hi[h]=i; });
+    dataRows.forEach(function(row){
+      var date = row[hi[fmt.dateCol]] || '';
+      var desc = row[hi[fmt.descCol]] || '';
+      var debit = parseFloat((row[hi[fmt.debitCol]]||'').replace(/[,$]/g,''))||0;
+      var credit = parseFloat((row[hi[fmt.creditCol]]||'').replace(/[,$]/g,''))||0;
+      if (!desc.trim()) return;
+      var amt = debit || credit;
+      var type = debit > 0 ? 'expense' : 'income';
+      if (amt === 0) return;
+      parsed.push({ date: normalizeDate(date), description: desc.replace(/^"|"$/g,''), amount: amt, type: type, category: null });
+    });
+  } else {
+    var hi = {};  headers.forEach(function(h,i){ hi[h]=i; });
+    dataRows.forEach(function(row){
+      var date = row[hi[fmt.dateCol]] || '';
+      var desc = row[hi[fmt.descCol]] || '';
+      var rawAmt = parseFloat((row[hi[fmt.amountCol]]||'').replace(/[,$]/g,''))||0;
+      if (!desc.trim() || rawAmt === 0) return;
+      var type, amt;
+      if (fmt.amountSign === 'negative_is_expense') {
+        type = rawAmt < 0 ? 'expense' : 'income'; amt = Math.abs(rawAmt);
+      } else {
+        type = rawAmt > 0 ? 'expense' : 'income'; amt = Math.abs(rawAmt);
+      }
+      parsed.push({ date: normalizeDate(date), description: desc.replace(/^"|"$/g,''), amount: amt, type: type, category: null });
+    });
+  }
+
+  if (!parsed.length) { toast('No transactions found in file'); resetImport(); return; }
+  importedRows = parsed;
+  parsed.forEach(function(r, i){ importToggled[i] = true; });
+  document.getElementById('importPreviewCount').textContent = parsed.length + ' transactions found — reviewing with AI…';
+  renderImportPreview();
+  aiCategorize(parsed);
+}
+
+function normalizeDate(raw) {
+  if (!raw) return today();
+  raw = raw.trim().replace(/^"|"$/g,'');
+  // Try common formats: MM/DD/YYYY, YYYY-MM-DD, DD/MM/YYYY, MM-DD-YYYY
+  var m;
+  if ((m = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/))) {
+    var y = m[3].length === 2 ? '20'+m[3] : m[3];
+    return y+'-'+pad(m[1])+'-'+pad(m[2]);
+  }
+  if ((m = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return m[1]+'-'+pad(m[2])+'-'+pad(m[3]);
+  if ((m = raw.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})$/))) {
+    var y = m[3].length === 2 ? '20'+m[3] : m[3];
+    return y+'-'+pad(m[1])+'-'+pad(m[2]);
+  }
+  return raw;
+}
+function pad(n){ return String(n).padStart(2,'0'); }
+
+// ── AI CATEGORIZATION ──
+function aiCategorize(rows) {
+  if (!state.apiKey) {
+    // No key — mark all as uncategorized
+    document.getElementById('importAiMsg').textContent = 'No API key — categories not assigned';
+    document.getElementById('importConfirmBtn').disabled = false;
+    document.getElementById('importPreviewCount').textContent = rows.length + ' transactions ready to import';
+    return;
+  }
+  document.getElementById('importAiStatus').style.display = 'flex';
+  document.getElementById('importAiMsg').textContent = 'Categorizing ' + rows.length + ' transactions with AI…';
+
+  // Build list of all sub-categories
+  var allSubs = getAllSubs();
+  var descriptions = rows.map(function(r, i){ return i+': '+r.description+' ($'+r.amount+', '+r.type+')'; }).join('\n');
+
+  var prompt = 'You are a personal finance categorizer. Assign each transaction to exactly one sub-category from this list:\n\n'
+    + allSubs.join(', ')
+    + '\n\nTransactions (index: description):\n' + descriptions
+    + '\n\nRespond ONLY with a JSON array of objects, one per transaction, in order. Each object: {"index": N, "category": "exact sub-category name from the list"}. No explanation, no markdown, just the JSON array.';
+
+  fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': state.apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+    body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 2000, messages: [{ role: 'user', content: prompt }] })
+  }).then(function(r){ return r.json(); }).then(function(d){
+    if (d.content && d.content[0]) {
+      try {
+        var text = d.content[0].text.trim().replace(/^```json|^```|```$/gm,'').trim();
+        var results = JSON.parse(text);
+        results.forEach(function(r){
+          if (importedRows[r.index] && r.category) importedRows[r.index].category = r.category;
+        });
+      } catch(e) { console.warn('AI parse error', e); }
+    }
+    document.getElementById('importAiMsg').textContent = 'Categorized ✓';
+    document.getElementById('importAiStatus').style.display = 'none';
+    document.getElementById('importConfirmBtn').disabled = false;
+    document.getElementById('importPreviewCount').textContent = importedRows.length + ' transactions ready — review before importing';
+    renderImportPreview();
+  }).catch(function(e){
+    document.getElementById('importAiMsg').textContent = 'AI unavailable — you can assign categories manually';
+    document.getElementById('importConfirmBtn').disabled = false;
+    renderImportPreview();
+  });
+}
+
+// ── RENDER PREVIEW ──
+function renderImportPreview() {
+  var list = document.getElementById('importPreviewList');
+  var allSubs = getAllSubs();
+  list.innerHTML = importedRows.map(function(row, i){
+    var on = importToggled[i] !== false;
+    var col = row.category ? colorOf(row.category) : 'var(--text3)';
+    return '<div class="import-row" id="irow-'+i+'">'
+      + '<div class="import-row-toggle'+(on?' on':'')+'" onclick="toggleImportRow('+i+')">'
+      + (on?'<svg width="10" height="10" viewBox="0 0 24 24" fill="none"><polyline points="20 6 9 17 4 12" stroke="white" stroke-width="3"/></svg>':'')
+      + '</div>'
+      + '<div class="import-row-body">'
+      + '<div class="import-row-desc">'+esc(row.description)+'</div>'
+      + '<div class="import-row-meta">'+row.date+' · '
+      + '<select onchange="changeImportCat('+i+',this.value)" style="border:none;background:none;font-size:11px;color:var(--text3);cursor:pointer;outline:none;font-family:sans-serif;max-width:160px">'
+      + allSubs.map(function(s){ return '<option value="'+s+'"'+(row.category===s?' selected':'')+'>'+s+'</option>'; }).join('')
+      + '</select></div>'
+      + '</div>'
+      + '<div class="import-row-right">'
+      + '<div class="import-row-amt" style="color:'+(row.type==='income'?'var(--green)':'var(--red)')+'">'+
+        (row.type==='income'?'+':'')+fmt(row.amount)+'</div>'
+      + '<div class="import-row-cat" style="color:'+col+'">'+esc(row.category||'Uncategorized')+'</div>'
+      + '</div>'
+      + '</div>';
+  }).join('');
+}
+
+function toggleImportRow(i) {
+  importToggled[i] = !importToggled[i];
+  var el = document.getElementById('irow-'+i);
+  var tog = el.querySelector('.import-row-toggle');
+  tog.className = 'import-row-toggle' + (importToggled[i]?' on':'');
+  tog.innerHTML = importToggled[i] ? '<svg width="10" height="10" viewBox="0 0 24 24" fill="none"><polyline points="20 6 9 17 4 12" stroke="white" stroke-width="3"/></svg>' : '';
+  var count = Object.values(importToggled).filter(Boolean).length;
+  document.getElementById('importConfirmBtn').textContent = 'Import ' + count + ' Transactions';
+}
+
+function changeImportCat(i, val) {
+  importedRows[i].category = val;
+  var el = document.getElementById('irow-'+i);
+  var catEl = el.querySelector('.import-row-cat');
+  if (catEl) { catEl.textContent = val; catEl.style.color = colorOf(val); }
+}
+
+// ── CONFIRM IMPORT ──
+function confirmImport() {
+  var acctId = document.getElementById('importAccount').value;
+  if (!acctId) { toast('Select an account'); return; }
+  var toImport = importedRows.filter(function(r, i){ return importToggled[i] !== false; });
+  if (!toImport.length) { toast('No transactions selected'); return; }
+
+  // Deduplicate against existing transactions
+  var existing = state.transactions.filter(function(t){ return t.accountId === acctId; });
+  var dupeKey = function(t){ return t.date+'|'+t.amount+'|'+(t.description||'').toLowerCase().slice(0,20); };
+  var existingKeys = {};
+  existing.forEach(function(t){ existingKeys[dupeKey(t)] = true; });
+
+  var added = 0, skipped = 0;
+  toImport.forEach(function(row){
+    var k = row.date+'|'+row.amount+'|'+(row.description||'').toLowerCase().slice(0,20);
+    if (existingKeys[k]) { skipped++; return; }
+    state.transactions.unshift({
+      id: 'tx_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),
+      type: row.type,
+      amount: row.amount,
+      description: row.description,
+      category: row.category || 'Other',
+      date: row.date,
+      notes: 'Imported',
+      accountId: acctId
+    });
+    added++;
+  });
+
+  save();
+  closeSheet('importCSV');
+  renderHome();
+  if (activeAcctId) renderAccountDetail();
+  toast('✓ Imported ' + added + ' transactions' + (skipped ? ' · ' + skipped + ' duplicates skipped' : ''));
 }
 
 // ── CHECK EXISTING SESSION ──
