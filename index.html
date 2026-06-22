@@ -569,7 +569,8 @@ var budgetTopVisible=true;
 var ACCT_ICONS = {Checking:'🏦',Savings:'💰',Cash:'💵','Credit Card':'💳',Investment:'📈',Other:'🏛'};
 function acctColor(type){return{Checking:'#3B82F6',Savings:'#4A7C59',Cash:'#8B6F47','Credit Card':'#E74C3C',Investment:'#8B5CF6',Other:'#9C8C78'}[type]||'#9C8C78';}
 
-function save(){try{localStorage.setItem('fika3',JSON.stringify(state));}catch(e){}}
+function localSave(){try{localStorage.setItem('fika3',JSON.stringify(state));}catch(e){}}
+function save(){localSave();syncToFirestore();}
 function load(){try{var s=localStorage.getItem('fika3');if(s)Object.assign(state,JSON.parse(s));}catch(e){}}
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function fmt(n,sign){var v=parseFloat(n||0);var s=Math.abs(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});if(v<0)return'-$'+s;if(sign&&v>0)return'+$'+s;return'$'+s;}
@@ -1186,12 +1187,7 @@ function setSyncStatus(msg) {
   var el = document.getElementById('syncStatus'); if(el) el.textContent = msg;
 }
 
-// Override save() to also sync
-var _localSave = save;
-function save() {
-  _localSave();
-  syncToFirestore();
-}
+// save() already defined above with sync built in
 
 
 // ══════════════════════════════════════════════
