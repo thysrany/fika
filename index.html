@@ -455,10 +455,16 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
     <div class="sheet-handle"></div>
     <div class="sheet-title"><span>Claude API Key</span><button class="sheet-close" onclick="closeSheet('apiKey')">×</button></div>
     <div class="sheet-body">
-      <p style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:14px">Get your key at <strong>console.anthropic.com</strong>. Unlocks AI spending insights and tax summaries.</p>
-      <div class="form-group"><div class="form-label">API Key</div><input class="form-input" id="apiKeyInput" type="password" placeholder="sk-ant-..."></div>
-      <button class="pri-btn" onclick="saveApiKey()">Save Key</button>
-      <div id="apiKeyStatus" style="text-align:center;font-size:12px;margin-top:10px;color:var(--text3)"></div>
+      <p style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:14px">Get your key at <strong>console.anthropic.com</strong>. Unlocks AI categorization, PDF import, and tax summaries.</p>
+      <div class="form-group">
+        <div class="form-label">API Key</div>
+        <div style="position:relative">
+          <input class="form-input" id="apiKeyInput" type="password" placeholder="sk-ant-..." style="padding-right:44px">
+          <button onclick="toggleKeyVis()" id="keyVisBtn" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3)">👁</button>
+        </div>
+      </div>
+      <button class="pri-btn" id="saveKeyBtn" onclick="saveApiKey()">Save & Verify Key</button>
+      <div id="apiKeyStatus" style="text-align:center;font-size:13px;margin-top:12px;padding:10px;border-radius:8px;display:none"></div>
     </div>
   </div>
 </div>
@@ -1080,10 +1086,50 @@ function runReportAI(){
 }
 
 // ── AI ──
+function toggleKeyVis(){
+  var inp=document.getElementById('apiKeyInput');
+  inp.type=inp.type==='password'?'text':'password';
+}
+
 function saveApiKey(){
-  var k=document.getElementById('apiKeyInput').value.trim();if(!k){toast('Paste your key');return;}
-  state.apiKey=k;save();document.getElementById('apiDot').className='dot ok';
-  document.getElementById('apiKeyStatus').textContent='✓ Key saved — AI ready';toast('API key saved ✓');
+  var k=document.getElementById('apiKeyInput').value.trim();
+  if(!k){showKeyStatus('error','Paste your API key first');return;}
+  if(!k.startsWith('sk-ant-')){showKeyStatus('error','Key should start with sk-ant-');return;}
+  var btn=document.getElementById('saveKeyBtn');
+  btn.textContent='Verifying…';btn.disabled=true;
+  showKeyStatus('loading','Checking your key with Anthropic…');
+  // Test with a minimal API call
+  fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-api-key':k,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:5,messages:[{role:'user',content:'hi'}]})
+  }).then(function(r){return r.json();}).then(function(d){
+    btn.textContent='Save & Verify Key';btn.disabled=false;
+    if(d.error){
+      showKeyStatus('error','Invalid key: '+d.error.message);
+    } else {
+      state.apiKey=k;save();
+      document.getElementById('apiDot').className='dot ok';
+      showKeyStatus('ok','✓ Key verified and saved — AI features are active!');
+      setTimeout(function(){closeSheet('apiKey');},1200);
+    }
+  }).catch(function(e){
+    btn.textContent='Save & Verify Key';btn.disabled=false;
+    // Network error — save anyway, might work
+    state.apiKey=k;save();
+    document.getElementById('apiDot').className='dot ok';
+    showKeyStatus('ok','✓ Key saved (could not verify — check your connection)');
+    setTimeout(function(){closeSheet('apiKey');},1500);
+  });
+}
+
+function showKeyStatus(type,msg){
+  var el=document.getElementById('apiKeyStatus');
+  el.style.display='block';
+  el.textContent=msg;
+  if(type==='ok'){el.style.background='var(--green-pale)';el.style.color='var(--green)';}
+  else if(type==='error'){el.style.background='var(--red-pale)';el.style.color='var(--red)';}
+  else{el.style.background='var(--surface2)';el.style.color='var(--text3)';}
 }
 function callClaude(prompt,outId,loading){
   if(!state.apiKey){toast('Add your API key first');return;}
