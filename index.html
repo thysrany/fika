@@ -470,18 +470,41 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
     <div class="sheet-handle"></div>
     <div class="sheet-title"><span>Import Bank Statement</span><button class="sheet-close" onclick="closeSheet('importCSV')">×</button></div>
     <div class="sheet-body">
+
       <!-- Step 1: Upload -->
       <div id="importStep1">
-        <p style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:16px">
-          Upload a CSV exported from your bank. Fika auto-detects Chase, Bank of America, Capital One, Wells Fargo, Amex, Citi, TD Bank and more — and uses AI to categorize each transaction.
-        </p>
-        <div id="csvDropZone" onclick="document.getElementById('csvFileInput').click()" style="border:2px dashed var(--border);border-radius:var(--radius);padding:32px 20px;text-align:center;cursor:pointer;transition:all 0.15s;margin-bottom:14px">
-          <div style="font-size:32px;margin-bottom:8px">📄</div>
-          <div style="font-size:14px;font-weight:600;color:var(--text2);margin-bottom:4px">Tap to select CSV file</div>
-          <div style="font-size:12px;color:var(--text3)">Exported from your bank's website</div>
+        <!-- Format tabs -->
+        <div style="display:flex;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;margin-bottom:14px">
+          <button id="tabCSV" onclick="switchImportTab('csv')" style="flex:1;padding:9px;font-size:13px;font-weight:600;border:none;cursor:pointer;background:var(--moss);color:#fff;font-family:'DM Sans',sans-serif">CSV</button>
+          <button id="tabPDF" onclick="switchImportTab('pdf')" style="flex:1;padding:9px;font-size:13px;font-weight:600;border:none;cursor:pointer;background:var(--bg);color:var(--text3);font-family:'DM Sans',sans-serif">PDF</button>
         </div>
-        <input type="file" id="csvFileInput" accept=".csv,.txt" style="display:none" onchange="handleCSVFile(this)">
-        <div class="form-group">
+
+        <!-- CSV mode -->
+        <div id="csvMode">
+          <p style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:12px">Upload a CSV exported from your bank. Fika auto-detects Chase, Capital One, Wells Fargo, Amex, Citi, TD Bank and more.</p>
+          <div onclick="document.getElementById('csvFileInput').click()" style="border:2px dashed var(--border);border-radius:var(--radius);padding:28px 20px;text-align:center;cursor:pointer;transition:all 0.15s;margin-bottom:12px">
+            <div style="font-size:28px;margin-bottom:6px">📊</div>
+            <div style="font-size:14px;font-weight:600;color:var(--text2);margin-bottom:3px">Tap to select .CSV file</div>
+            <div style="font-size:12px;color:var(--text3)">Download from your bank's website → Transactions → Export</div>
+          </div>
+          <input type="file" id="csvFileInput" accept=".csv,.txt" style="display:none" onchange="handleCSVFile(this)">
+        </div>
+
+        <!-- PDF mode -->
+        <div id="pdfMode" style="display:none">
+          <p style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:12px">Upload your bank statement PDF. Claude AI will read it and extract all transactions automatically — works with Bank of America, Chase, and any other bank PDF.</p>
+          <div id="pdfRequiresKey" style="display:none;background:var(--amber-pale);border:1px solid var(--amber);border-radius:var(--radius-sm);padding:10px 14px;font-size:12px;color:var(--bark);margin-bottom:12px">
+            ⚠️ PDF import requires a Claude API key. Add it via the AI Key button.
+          </div>
+          <div onclick="document.getElementById('pdfFileInput').click()" style="border:2px dashed var(--border);border-radius:var(--radius);padding:28px 20px;text-align:center;cursor:pointer;transition:all 0.15s;margin-bottom:12px">
+            <div style="font-size:28px;margin-bottom:6px">📄</div>
+            <div style="font-size:14px;font-weight:600;color:var(--text2);margin-bottom:3px">Tap to select .PDF file</div>
+            <div style="font-size:12px;color:var(--text3)">Your bank statement — any bank, any format</div>
+          </div>
+          <input type="file" id="pdfFileInput" accept=".pdf" style="display:none" onchange="handlePDFFile(this)">
+        </div>
+
+        <div class="form-group" style="margin-top:4px">
           <div class="form-label">Import into account</div>
           <select class="form-select" id="importAccount"></select>
         </div>
@@ -494,7 +517,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
         </div>
         <div id="importAiStatus" style="font-size:12px;color:var(--text3);margin-bottom:10px;display:flex;align-items:center;gap:8px">
           <div class="ai-dot" style="flex-shrink:0"></div>
-          <span id="importAiMsg">Categorizing with AI…</span>
+          <span id="importAiMsg">Processing…</span>
         </div>
         <div style="font-size:12px;color:var(--text2);margin-bottom:8px;font-weight:600" id="importPreviewCount"></div>
         <div id="importPreviewList" style="max-height:340px;overflow-y:auto;border:1px solid var(--border-soft);border-radius:var(--radius-sm)"></div>
@@ -503,6 +526,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
           <button class="pri-btn" style="flex:2;margin-top:0" id="importConfirmBtn" onclick="confirmImport()">Import All</button>
         </div>
       </div>
+
     </div>
   </div>
 </div>
@@ -1289,14 +1313,124 @@ function openImportSheet() {
   openSheet('importCSV');
 }
 
+// ── IMPORT TAB SWITCHING ──
+var importMode = 'csv';
+function switchImportTab(mode) {
+  importMode = mode;
+  document.getElementById('csvMode').style.display = mode === 'csv' ? '' : 'none';
+  document.getElementById('pdfMode').style.display = mode === 'pdf' ? '' : 'none';
+  document.getElementById('tabCSV').style.background = mode === 'csv' ? 'var(--moss)' : 'var(--bg)';
+  document.getElementById('tabCSV').style.color = mode === 'csv' ? '#fff' : 'var(--text3)';
+  document.getElementById('tabPDF').style.background = mode === 'pdf' ? 'var(--moss)' : 'var(--bg)';
+  document.getElementById('tabPDF').style.color = mode === 'pdf' ? '#fff' : 'var(--text3)';
+  // Show warning if no API key for PDF
+  var warn = document.getElementById('pdfRequiresKey');
+  if (warn) warn.style.display = (mode === 'pdf' && !state.apiKey) ? '' : 'none';
+}
+
+// ── PDF IMPORT ──
+function handlePDFFile(input) {
+  var file = input.files[0]; if (!file) return;
+  if (!state.apiKey) { toast('PDF import requires a Claude API key'); return; }
+
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var base64 = e.target.result.split(',')[1];
+    processPDF(base64, file.name);
+  };
+  reader.readAsDataURL(file);
+}
+
+function processPDF(base64Data, fileName) {
+  document.getElementById('importStep1').style.display = 'none';
+  document.getElementById('importStep2').style.display = '';
+  document.getElementById('importBankName').textContent = 'Reading PDF: ' + fileName;
+  document.getElementById('importAiStatus').style.display = 'flex';
+  document.getElementById('importAiMsg').textContent = 'Claude is reading your bank statement…';
+  document.getElementById('importConfirmBtn').disabled = true;
+  document.getElementById('importPreviewCount').textContent = '';
+  document.getElementById('importPreviewList').innerHTML = '';
+
+  var allSubs = getAllSubs();
+  var prompt = 'This is a bank statement PDF. Extract ALL transactions from it.\n\n'
+    + 'For each transaction return a JSON object with:\n'
+    + '- date: string in YYYY-MM-DD format\n'
+    + '- description: merchant or payee name (clean, no codes)\n'
+    + '- amount: positive number\n'
+    + '- type: "expense" or "income" (deposits/credits = income, withdrawals/debits = expense)\n'
+    + '- category: best matching sub-category from this list: ' + allSubs.join(', ') + '\n\n'
+    + 'Respond ONLY with a valid JSON array. No explanation, no markdown fences. Just the array.\n'
+    + 'Example: [{"date":"2024-01-15","description":"Whole Foods","amount":87.50,"type":"expense","category":"Groceries"}]';
+
+  fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': state.apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 4000,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64Data } },
+          { type: 'text', text: prompt }
+        ]
+      }]
+    })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (d.error) { showImportError('Claude error: ' + d.error.message); return; }
+    if (!d.content || !d.content[0]) { showImportError('No response from Claude'); return; }
+    var text = d.content[0].text.trim().replace(/^```json|^```|```$/gm, '').trim();
+    var parsed;
+    try { parsed = JSON.parse(text); } catch(e) {
+      // Try to find array in response
+      var match = text.match(/\[.*\]/s);
+      if (match) { try { parsed = JSON.parse(match[0]); } catch(e2) { showImportError('Could not parse response'); return; } }
+      else { showImportError('Could not parse response'); return; }
+    }
+    if (!Array.isArray(parsed) || !parsed.length) { showImportError('No transactions found in PDF'); return; }
+    importedRows = parsed.map(function(r) {
+      return {
+        date: r.date || today(),
+        description: r.description || 'Unknown',
+        amount: Math.abs(parseFloat(r.amount) || 0),
+        type: r.type === 'income' ? 'income' : 'expense',
+        category: r.category || null
+      };
+    }).filter(function(r) { return r.amount > 0; });
+
+    importToggled = {};
+    importedRows.forEach(function(r, i) { importToggled[i] = true; });
+
+    document.getElementById('importAiStatus').style.display = 'none';
+    document.getElementById('importBankName').textContent = 'PDF parsed — ' + importedRows.length + ' transactions found';
+    document.getElementById('importPreviewCount').textContent = importedRows.length + ' transactions — review before importing';
+    document.getElementById('importConfirmBtn').disabled = false;
+    document.getElementById('importConfirmBtn').textContent = 'Import ' + importedRows.length + ' Transactions';
+    renderImportPreview();
+  })
+  .catch(function(e) { showImportError('Request failed: ' + e.message); });
+}
+
+function showImportError(msg) {
+  document.getElementById('importAiStatus').style.display = 'none';
+  document.getElementById('importPreviewCount').textContent = '⚠️ ' + msg;
+  document.getElementById('importConfirmBtn').disabled = false;
+}
+
 function resetImport() {
   importedRows = []; importToggled = {};
   document.getElementById('importStep1').style.display = '';
   document.getElementById('importStep2').style.display = 'none';
   document.getElementById('csvFileInput').value = '';
-  var dz = document.getElementById('csvDropZone');
-  dz.style.borderColor = 'var(--border)';
-  dz.style.background = '';
+  var pdf = document.getElementById('pdfFileInput'); if(pdf) pdf.value = '';
+  switchImportTab('csv');
 }
 
 // ── HANDLE FILE ──
