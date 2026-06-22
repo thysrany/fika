@@ -791,7 +791,6 @@ function openSheet(name){
     document.getElementById('goalSheetTitle').textContent='Add Goal';
     ['goalName','goalTarget','goalCurrent','goalDate'].forEach(function(id){document.getElementById(id).value='';});
   }
-  if(name==='importCSV'){openImportSheet();return;}
   if(name==='manageCats'){renderCatMgmt();buildParentSelect();}
   document.getElementById('sheet-'+name).classList.add('open');
 }
@@ -1351,12 +1350,28 @@ function parseCSV(text) {
 function openImportSheet() {
   // populate account select
   var sel = document.getElementById('importAccount');
-  sel.innerHTML = state.accounts.map(function(a){
-    return '<option value="'+a.id+'">'+esc(a.name)+'</option>';
-  }).join('');
-  if (activeAcctId) sel.value = activeAcctId;
-  resetImport();
-  openSheet('importCSV');
+  if (sel) {
+    sel.innerHTML = state.accounts.map(function(a){
+      return '<option value="'+a.id+'">'+esc(a.name)+'</option>';
+    }).join('');
+    if (activeAcctId) sel.value = activeAcctId;
+  }
+  // Reset UI state
+  importedRows = []; importToggled = {};
+  document.getElementById('importStep1').style.display = '';
+  document.getElementById('importStep2').style.display = 'none';
+  var csv = document.getElementById('csvFileInput'); if(csv) csv.value = '';
+  var pdf = document.getElementById('pdfFileInput'); if(pdf) pdf.value = '';
+  // Set CSV tab active (direct DOM, no switchImportTab to avoid timing issues)
+  importMode = 'csv';
+  var cm = document.getElementById('csvMode'); if(cm) cm.style.display = '';
+  var pm = document.getElementById('pdfMode'); if(pm) pm.style.display = 'none';
+  var tc = document.getElementById('tabCSV');
+  var tp = document.getElementById('tabPDF');
+  if(tc){tc.style.background='var(--moss)';tc.style.color='#fff';}
+  if(tp){tp.style.background='var(--bg)';tp.style.color='var(--text3)';}
+  // Now open the sheet
+  document.getElementById('sheet-importCSV').classList.add('open');
 }
 
 // ── IMPORT TAB SWITCHING ──
@@ -1472,11 +1487,15 @@ function showImportError(msg) {
 
 function resetImport() {
   importedRows = []; importToggled = {};
-  document.getElementById('importStep1').style.display = '';
-  document.getElementById('importStep2').style.display = 'none';
-  document.getElementById('csvFileInput').value = '';
+  var s1 = document.getElementById('importStep1'); if(s1) s1.style.display = '';
+  var s2 = document.getElementById('importStep2'); if(s2) s2.style.display = 'none';
+  var csv = document.getElementById('csvFileInput'); if(csv) csv.value = '';
   var pdf = document.getElementById('pdfFileInput'); if(pdf) pdf.value = '';
-  switchImportTab('csv');
+  importMode = 'csv';
+  var cm = document.getElementById('csvMode'); if(cm) cm.style.display = '';
+  var pm = document.getElementById('pdfMode'); if(pm) pm.style.display = 'none';
+  var tc = document.getElementById('tabCSV'); if(tc){tc.style.background='var(--moss)';tc.style.color='#fff';}
+  var tp = document.getElementById('tabPDF'); if(tp){tp.style.background='var(--bg)';tp.style.color='var(--text3)';}
 }
 
 // ── HANDLE FILE ──
