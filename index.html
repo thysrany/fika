@@ -438,6 +438,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
     <div class="recon-bar">
       <div class="recon-status" id="reconStatus"></div>
       <button class="recon-lock-btn" id="reconLockBtn" onclick="toggleReconcile()"></button>
+      <button id="reconDeleteBtn" onclick="deleteStatement()" style="background:none;border:none;padding:6px 8px;cursor:pointer;color:var(--text3);font-size:16px;line-height:1;border-radius:6px;transition:all 0.13s" title="Delete statement">🗑</button>
     </div>
     <div class="add-tx-bar" id="stmtAddTxBar">
       <button class="add-tx-btn" onclick="openSheet('addTx')">
@@ -1010,6 +1011,20 @@ function toggleReconcile(){
   stmt.locked=!stmt.locked;
   save();renderStmtDetail();
   toast(stmt.locked?'🔒 Statement reconciled':'🔓 Statement unlocked');
+}
+
+function deleteStatement(){
+  var stmt=state.statements.find(function(s){return s.id===activeStmtId;});if(!stmt)return;
+  var txCount=state.transactions.filter(function(t){return t.statementId===activeStmtId;}).length;
+  var msg=txCount
+    ? 'Delete "'+stmt.period+'" and its '+txCount+' transaction'+(txCount===1?'':'s')+'? This cannot be undone.'
+    : 'Delete "'+stmt.period+'"? This cannot be undone.';
+  if(!confirm(msg))return;
+  state.transactions=state.transactions.filter(function(t){return t.statementId!==activeStmtId;});
+  state.statements=state.statements.filter(function(s){return s.id!==activeStmtId;});
+  activeStmtId=null;
+  save();goToAccount();
+  toast('Statement deleted');
 }
 
 // ═══════════════════════════════════════════════════
@@ -1741,7 +1756,7 @@ function callClaude(prompt,outId){
 // FIREBASE / GOOGLE AUTH
 // ═══════════════════════════════════════════════════
 var FIREBASE_PROJECT='speakdeck-bb76b';
-var GOOGLE_CLIENT_ID='55277159527-53fbmbof24n7rhs44h6qtp58atcgqe6i.apps.googleusercontent.com';
+var GOOGLE_CLIENT_ID='1052538790134-k8bdfm2cfjtu0avupo8j7m5o8mjhu5m5.apps.googleusercontent.com';
 var FIRESTORE_BASE='https://firestore.googleapis.com/v1/projects/'+FIREBASE_PROJECT+'/databases/(default)/documents';
 var gAccessToken=null,gUserId=null,tokenClient=null;
 
