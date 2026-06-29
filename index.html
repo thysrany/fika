@@ -192,13 +192,16 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
 .stmt-meta-label{font-size:9px;font-weight:700;letter-spacing:0.6px;text-transform:uppercase;color:var(--text3);margin-bottom:4px}
 .stmt-meta-val{font-size:13px;font-weight:600;color:var(--text);font-family:'DM Mono',monospace}
 .stmt-meta-val input{background:none;border:none;font-family:'DM Mono',monospace;font-size:13px;font-weight:600;color:var(--text);width:100%;outline:none}
-.review-tx-item{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:var(--radius-sm);margin-bottom:4px;background:var(--surface);border:1px solid var(--border-soft)}
-.review-tx-desc{flex:1;font-size:12px;color:var(--text2);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.review-tx-cat{font-size:10px;color:var(--text3);flex-shrink:0;max-width:90px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.review-tx-item{border-radius:var(--radius-sm);margin-bottom:6px;background:var(--surface);border:1px solid var(--border-soft);overflow:hidden}
+.review-tx-top{display:flex;align-items:center;gap:8px;padding:9px 10px 6px}
+.review-tx-desc{flex:1;font-size:12px;font-weight:600;color:var(--text2);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .review-tx-amt{font-family:'DM Mono',monospace;font-size:12px;font-weight:500;flex-shrink:0}
 .review-tx-amt.inc{color:var(--green)}.review-tx-amt.exp{color:var(--red)}
-.review-edit-btn{font-size:11px;color:var(--text3);background:none;border:none;cursor:pointer;padding:2px 6px;border-radius:4px}
-.review-edit-btn:hover{background:var(--surface2);color:var(--text)}
+.review-tx-controls{display:flex;gap:6px;padding:0 10px 9px;align-items:center}
+.review-tx-select{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:11px;font-family:'DM Sans',sans-serif;color:var(--text2);outline:none;cursor:pointer}
+.review-tx-select:focus{border-color:var(--moss-light)}
+.review-tx-select.acct-sel{color:var(--moss);font-weight:600;border-color:var(--moss-pale);background:var(--moss-xpale)}
+.review-tx-date{font-size:10px;color:var(--text3);white-space:nowrap;font-family:'DM Mono',monospace}
 
 /* ── BUDGET ── */
 .budget-header-band{background:var(--moss);padding:16px 16px 14px;flex-shrink:0}
@@ -1236,27 +1239,52 @@ function categorizeTxsWithClaude(txs, meta){
 
 function showReview(txs, meta){
   importParsedData={txs:txs,meta:meta};
-  // Build period label
   var period=meta.period||buildPeriodLabel(meta.openedAt,meta.closedAt)||'Imported Statement';
-  // Meta grid
+
+  var acctOpts=state.accounts.map(function(a){
+    var sel=(a.id===activeAcctId)?' selected':'';
+    return '<option value="'+a.id+'"'+sel+'>'+esc(a.name)+'</option>';
+  }).join('');
+
   var grid=document.getElementById('importMetaGrid');
   grid.innerHTML=
     '<div class="stmt-meta-field"><div class="stmt-meta-label">Period</div><div class="stmt-meta-val"><input id="importPeriodInput" value="'+esc(period)+'"></div></div>'+
     '<div class="stmt-meta-field"><div class="stmt-meta-label">Source</div><div class="stmt-meta-val" style="text-transform:capitalize">'+esc(meta.source||'upload')+'</div></div>'+
-    '<div class="stmt-meta-field"><div class="stmt-meta-label">Opening Balance</div><div class="stmt-meta-val"><input id="importOpeningInput" type="number" step="0.01" value="'+(meta.opening||0)+'"></div></div>'+
-    '<div class="stmt-meta-field"><div class="stmt-meta-label">Closing Balance</div><div class="stmt-meta-val"><input id="importClosingInput" type="number" step="0.01" value="'+(meta.closing||0)+'"></div></div>';
+    '<div class="stmt-meta-field"><div class="stmt-meta-label">Opening Balance</div><div class="stmt-meta-val"><input id="importOpeningInput" type="number" step="0.01" value="'+(meta.opening||0)+'</div></div>'+
+    '<div class="stmt-meta-field"><div class="stmt-meta-label">Closing Balance</div><div class="stmt-meta-val"><input id="importClosingInput" type="number" step="0.01" value="'+(meta.closing||0)+'</div></div>';
+
+  var multiAcctNote=state.accounts.length>1
+    ? '<div style="font-size:11px;color:var(--moss);background:var(--moss-xpale);border:1px solid var(--moss-pale);border-radius:8px;padding:8px 12px;margin-bottom:10px">💡 Combined statement? Use the green dropdown on each row to assign transactions to the right account.</div>'
+    : '';
+
   document.getElementById('importReviewCount').textContent=txs.length+' transactions';
   var listEl=document.getElementById('importTxReviewList');
-  listEl.innerHTML=txs.map(function(t,i){
-    return '<div class="review-tx-item">'+
-      '<span style="font-size:14px">'+iconOf(t.category)+'</span>'+
-      '<span class="review-tx-desc">'+esc(t.description)+'</span>'+
-      '<span class="review-tx-cat">'+esc(t.category)+'</span>'+
-      '<span class="review-tx-amt '+(t.type==='income'?'inc':'exp')+'">'+(t.type==='income'?'+':'')+fmt(t.amount)+'</span>'+
+  listEl.innerHTML=multiAcctNote+txs.map(function(t,i){
+    var catOpts=getAllSubs().map(function(s){
+      return '<option value="'+esc(s)+'"'+(s===t.category?' selected':'')+'>'+esc(s)+'</option>';
+    }).join('');
+    return '<div class="review-tx-item" id="rtx_'+i+'">'+
+      '<div class="review-tx-top">'+
+        '<span style="font-size:15px" id="rtx_icon_'+i+'">'+iconOf(t.category)+'</span>'+
+        '<span class="review-tx-desc" title="'+esc(t.description)+'">'+esc(t.description)+'</span>'+
+        '<span class="review-tx-date">'+t.date+'</span>'+
+        '<span class="review-tx-amt '+(t.type==='income'?'inc':'exp')+'">'+(t.type==='income'?'+':'')+fmt(t.amount)+'</span>'+
+      '</div>'+
+      '<div class="review-tx-controls">'+
+        (state.accounts.length>1?'<select class="review-tx-select acct-sel" id="rtx_acct_'+i+'">'+acctOpts+'</select>':'')+
+        '<select class="review-tx-select" id="rtx_cat_'+i+'" onchange="onReviewCatChange('+i+')">'+catOpts+'</select>'+
+      '</div>'+
     '</div>';
   }).join('');
   showImportStep(3);
 }
+
+function onReviewCatChange(i){
+  var sel=document.getElementById('rtx_cat_'+i);
+  var icon=document.getElementById('rtx_icon_'+i);
+  if(sel&&icon)icon.textContent=iconOf(sel.value);
+}
+
 
 function buildPeriodLabel(from, to){
   if(!from&&!to)return null;
@@ -1272,35 +1300,69 @@ function confirmImport(){
   var opening=parseFloat(document.getElementById('importOpeningInput').value)||0;
   var closing=parseFloat(document.getElementById('importClosingInput').value)||0;
   var meta=importParsedData.meta;
-  var stmtId=uid();
-  var stmt={
-    id:stmtId,
-    accountId:activeAcctId,
-    period:period,
-    source:meta.source||'upload',
-    openedAt:meta.openedAt||null,
-    closedAt:meta.closedAt||null,
-    openingBalance:opening,
-    closingBalance:closing,
-    locked:false
-  };
-  state.statements.push(stmt);
-  importParsedData.txs.forEach(function(t){
-    state.transactions.push({
-      id:uid(),
-      accountId:activeAcctId,
-      statementId:stmtId,
-      type:t.type,
-      amount:t.amount,
-      description:t.description,
-      category:t.category||'Miscellaneous',
-      date:t.date,
-      notes:''
+  var txs=importParsedData.txs;
+
+  // Read per-transaction account and category assignments from the review UI
+  var txAssignments=txs.map(function(t,i){
+    var acctSel=document.getElementById('rtx_acct_'+i);
+    var catSel=document.getElementById('rtx_cat_'+i);
+    return{
+      acctId: acctSel?acctSel.value:activeAcctId,
+      category: catSel?catSel.value:(t.category||'Miscellaneous')
+    };
+  });
+
+  // Group transactions by account — create one statement per account used
+  var acctGroups={};
+  txs.forEach(function(t,i){
+    var aid=txAssignments[i].acctId||activeAcctId;
+    if(!acctGroups[aid])acctGroups[aid]=[];
+    acctGroups[aid].push({tx:t,cat:txAssignments[i].category,idx:i});
+  });
+
+  var acctIds=Object.keys(acctGroups);
+  var totalImported=0;
+
+  acctIds.forEach(function(aid,gi){
+    var stmtId=uid();
+    var acctName=(state.accounts.find(function(a){return a.id===aid;})||{}).name||'';
+    var stmtPeriod=acctIds.length>1?(period+( acctName?' · '+acctName:'' )):period;
+    var stmt={
+      id:stmtId,
+      accountId:aid,
+      period:stmtPeriod,
+      source:meta.source||'upload',
+      openedAt:meta.openedAt||null,
+      closedAt:meta.closedAt||null,
+      openingBalance:gi===0?opening:0,
+      closingBalance:gi===0?closing:0,
+      locked:false
+    };
+    state.statements.push(stmt);
+    acctGroups[aid].forEach(function(item){
+      state.transactions.push({
+        id:uid(),
+        accountId:aid,
+        statementId:stmtId,
+        type:item.tx.type,
+        amount:item.tx.amount,
+        description:item.tx.description,
+        category:item.cat||'Miscellaneous',
+        date:item.tx.date,
+        notes:''
+      });
+      totalImported++;
     });
   });
-  save();closeImport();
-  renderAccountDetail();renderHome();
-  toast('🌿 '+importParsedData.txs.length+' transactions imported');
+
+  save();
+  closeImport();
+  // Navigate to the primary account
+  activeAcctId=activeAcctId||acctIds[0];
+  renderAccountDetail();
+  renderHome();
+  var label=acctIds.length>1?totalImported+' transactions across '+acctIds.length+' accounts imported':totalImported+' transactions imported';
+  toast('🌿 '+label);
 }
 
 function startManualStatement(){
