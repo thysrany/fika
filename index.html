@@ -1217,24 +1217,71 @@ function parsePDFWithClaude(file){
 // ── CATEGORIZE via Claude ──
 function categorizeTxsWithClaude(txs, meta){
   if(!state.apiKey||!txs.length){showReview(txs,meta);return;}
-  document.getElementById('processingTitle').textContent='Categorizing…';
-  document.getElementById('processingSub').textContent='Assigning categories to '+txs.length+' transactions';
-  var allSubs=getAllSubs().join(', ');
-  var prompt='Categorize these bank transactions. Available sub-categories: '+allSubs+'\n\nTransactions:\n'+
-    txs.map(function(t,i){return i+': '+t.description+' ($'+t.amount+', '+t.type+')';}).join('\n')+
-    '\n\nReturn ONLY a JSON array of sub-category strings matching the transaction order. Example: ["Groceries","Salary","Uber / Lyft"]. Use only the exact sub-category names provided.';
+  document.getElementById('processingTitle').textContent='Categorizing\u2026';
+  document.getElementById('processingSub').textContent='Analyzing '+txs.length+' transactions with Claude\u2026';
+
+  var allSubs=getAllSubs();
+
+  var prompt=
+'You are a personal finance categorizer. Your job is to assign each bank transaction to the best sub-category.\n\n'+
+'AVAILABLE SUB-CATEGORIES (use ONLY these exact strings, nothing else):\n'+
+allSubs.join(' | ')+'\n\n'+
+'RULES - match merchants to categories like this:\n'+
+'WALMART/TARGET/COSTCO/ALDI/WHOLE FOODS/TRADER JOES/KROGER/STOP & SHOP/MARKET/GROCERY = Groceries\n'+
+'MCDONALDS/BURGER KING/SUBWAY/CHIPOTLE/WENDYS/TACO BELL/PANERA/PIZZA/RESTAURANT/GRILL/DINER/SUSHI/BISTRO = Restaurant\n'+
+'STARBUCKS/DUNKIN/COFFEE/ESPRESSO/BOBA = Coffee & Drinks\n'+
+'DOORDASH/UBER EATS/GRUBHUB/INSTACART DELIVERY = Food Delivery\n'+
+'SHELL/EXXON/BP/CHEVRON/SUNOCO/GULF/CITGO/MOBIL/GAS STATION/FUEL = Gas / Fuel\n'+
+'UBER (non-food)/LYFT = Uber / Lyft\n'+
+'MBTA/MTA/TRANSIT/BUS PASS/TRAIN/METRO/COMMUTER RAIL = Public Transit\n'+
+'NETFLIX/SPOTIFY/HULU/DISNEY/HBO/APPLE TV/AMAZON PRIME VIDEO/PEACOCK/PARAMOUNT = Cable / Streaming\n'+
+'AT&T/VERIZON/T-MOBILE/SPRINT/BOOST/METRO PCS/WIRELESS/CELLULAR = Phone Bill\n'+
+'XFINITY/COMCAST/RCN/SPECTRUM/FIOS/INTERNET SERVICE = Internet\n'+
+'EVERSOURCE/NATIONAL GRID/DUKE ENERGY/ELECTRIC/ELECTRICITY/POWER COMPANY = Electricity\n'+
+'CVS/WALGREENS/RITE AID/PHARMACY/PRESCRIPTION/DRUG STORE = Pharmacy\n'+
+'DOCTOR/DENTAL/VISION/URGENT CARE/HOSPITAL/CLINIC/MEDICAL CENTER = best Healthcare sub-category\n'+
+'PLANET FITNESS/GYM/YMCA/CROSSFIT/ANYTIME FITNESS = Gym & Sports\n'+
+'PAYROLL/DIRECT DEPOSIT/SALARY/ADP/GUSTO/PAYCHEX = Salary\n'+
+'ZELLE/VENMO/CASH APP/PAYPAL TRANSFER/PEER TRANSFER = Gift / Transfer\n'+
+'INTEREST PAYMENT/DIVIDEND/ROBINHOOD/FIDELITY/SCHWAB/VANGUARD = Investment Return\n'+
+'RENT PAYMENT/MORTGAGE/LEASE = Rent / Mortgage\n'+
+'STUDENT LOAN/NAVIENT/SALLIE MAE/MOHELA = Student Loan\n'+
+'Anything unclear = Miscellaneous\n\n'+
+'TRANSACTIONS (index | description | amount | type):\n'+
+txs.map(function(t,i){
+  return i+' | '+t.description+' | $'+t.amount+' | '+(t.type==='income'?'INCOME':'EXPENSE');
+}).join('\n')+
+'\n\nReturn ONLY a JSON array with exactly '+txs.length+' sub-category strings in order.\n'+
+'FORMAT: ["Groceries","Salary","Gas / Fuel"]\n'+
+'No explanation. No markdown. Just the JSON array.';
+
   fetch('https://api.anthropic.com/v1/messages',{
     method:'POST',
     headers:{'Content-Type':'application/json','x-api-key':state.apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,messages:[{role:'user',content:prompt}]})
+    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:2000,messages:[{role:'user',content:prompt}]})
   }).then(function(r){return r.json();}).then(function(d){
+    if(d.error){console.error('Claude API error:',d.error.message);showReview(txs,meta);return;}
     var text=d.content&&d.content[0]?d.content[0].text:'';
-    try{
-      var cats=JSON.parse(text.replace(/```json|```/g,'').trim());
-      txs.forEach(function(t,i){if(cats[i])t.category=cats[i];});
-    } catch(e){}
+    var clean=text.replace(/```json|```/gi,'').trim();
+    var match=clean.match(/\[[\s\S]*\]/);
+    if(match){
+      try{
+        var cats=JSON.parse(match[0]);
+        var validSubs=getAllSubs();
+        txs.forEach(function(t,i){
+          var suggested=cats[i];
+          if(suggested&&validSubs.indexOf(suggested)>-1){
+            t.category=suggested;
+          } else {
+            var lower=suggested?(suggested+'').toLowerCase():'';
+            var found=validSubs.find(function(s){return s.toLowerCase()===lower;});
+            t.category=found||'Miscellaneous';
+          }
+        });
+      } catch(e){console.error('Parse error:',e);}
+    }
     showReview(txs,meta);
-  }).catch(function(){showReview(txs,meta);});
+  }).catch(function(e){console.error('Fetch error:',e);showReview(txs,meta);});
 }
 
 function showReview(txs, meta){
