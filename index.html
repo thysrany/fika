@@ -1307,8 +1307,13 @@ function showReview(txs, meta){
   document.getElementById('importReviewCount').textContent=txs.length+' transactions';
   var listEl=document.getElementById('importTxReviewList');
   listEl.innerHTML=multiAcctNote+txs.map(function(t,i){
-    var catOpts=getAllSubs().map(function(s){
-      return '<option value="'+esc(s)+'"'+(s===t.category?' selected':'')+'>'+esc(s)+'</option>';
+    var catOpts=CAT_TREE.map(function(p){
+      var customSubs=(state.customSubs||[]).filter(function(c){return c.parent===p.name;});
+      var allSubs=p.subs.concat(customSubs.map(function(c){return c.name;}));
+      var opts=allSubs.map(function(s){
+        return '<option value="'+esc(s)+'"'+(s===t.category?' selected':'')+'>'+esc(s)+'</option>';
+      }).join('');
+      return '<optgroup label="'+p.icon+' '+esc(p.name)+'">'+opts+'</optgroup>';
     }).join('');
     return '<div class="review-tx-item" id="rtx_'+i+'">'+
       '<div class="review-tx-top">'+
