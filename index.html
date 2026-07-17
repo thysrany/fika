@@ -1899,7 +1899,17 @@ function renderBudgetMonth(){
   var incPct=incGoal?Math.round(incActual/incGoal*100):null;
   var incStatus=incGoal?(incActual>=incGoal?'good':'warn'):'dim';
 
-  var html='<div class="budget-health">'+
+  var totalExpGoal=Object.keys((budget.cats)||{}).reduce(function(s,k){return s+parseFloat(budget.cats[k]||0);},0);
+  var totalExpActual=Object.keys(catActuals).reduce(function(s,k){return s+catActuals[k];},0);
+  var balGoal=incGoal-totalExpGoal;
+  var balActual=incActual-totalExpActual;
+
+  var html='<div class="budget-health" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:8px">'+
+    '<div class="bh-card" style="background:var(--moss-dim);border-color:var(--moss-light)"><span class="bh-val" style="color:#90E8AA">'+fmt(incActual)+'</span><span class="bh-label" style="color:rgba(255,255,255,0.4)">Income</span></div>'+
+    '<div class="bh-card" style="background:var(--moss-dim);border-color:var(--moss-light)"><span class="bh-val" style="color:#F5A090">'+fmt(totalExpActual)+'</span><span class="bh-label" style="color:rgba(255,255,255,0.4)">Expenses</span></div>'+
+    '<div class="bh-card" style="background:var(--moss-dim);border-color:var(--moss-light)"><span class="bh-val '+(balActual>=0?'good':'bad')+'">'+fmt(balActual,true)+'</span><span class="bh-label" style="color:rgba(255,255,255,0.5)">Balance</span></div>'+
+  '</div>'+
+  '<div class="budget-health" style="margin-bottom:12px">'+
     '<div class="bh-card"><span class="bh-val '+(onTrack+over>0?'good':'dim')+'">'+onTrack+'</span><span class="bh-label">On Track</span></div>'+
     '<div class="bh-card"><span class="bh-val '+(over>0?'bad':'dim')+'">'+over+'</span><span class="bh-label">Over Budget</span></div>'+
     '<div class="bh-card"><span class="bh-val dim">'+noGoal+'</span><span class="bh-label">No Goal Set</span></div>'+
@@ -2028,7 +2038,11 @@ function openBudgetEditSheet(){
     '</div>';
   });
   document.getElementById('budgetCatEditList').innerHTML=html;
-  document.getElementById('budgetCatEditList').onclick=function(e){
+  var catList=document.getElementById('budgetCatEditList');
+  catList.oninput=function(e){
+    if(e.target.classList.contains('budget-sub-edit-inp')||e.target.classList.contains('budget-cat-sec-inp'))updateBudgetEditTotals();
+  };
+  catList.onclick=function(e){
     var hd=e.target.closest('.budget-cat-sec-hd');
     if(hd&&!e.target.closest('input')){
       var b=document.getElementById(hd.dataset.bodyid);
@@ -2042,10 +2056,17 @@ function openBudgetEditSheet(){
 
 function updateBudgetEditTotals(){
   var inc=parseFloat(document.getElementById('budgetIncomeInp').value)||0;
+  // Sum all category-level inputs that have a value
   var exp=0;
-  CAT_TREE.filter(function(p){return p.id!=='income';}).forEach(function(p){
-    exp+=parseFloat((document.getElementById('bcat_'+p.id)||{}).value||0)||0;
+  document.querySelectorAll('.budget-cat-sec-inp').forEach(function(el){
+    exp+=parseFloat(el.value)||0;
   });
+  // If no category totals set, fall back to summing sub-category inputs
+  if(exp===0){
+    document.querySelectorAll('.budget-sub-edit-inp').forEach(function(el){
+      exp+=parseFloat(el.value)||0;
+    });
+  }
   var bal=inc-exp;
   document.getElementById('betInc').textContent=fmt(inc);
   document.getElementById('betExp').textContent=fmt(exp);
