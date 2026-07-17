@@ -1805,27 +1805,21 @@ init();
 function budgetMonthKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
 function budgetMonthLabel(key){ var p=key.split('-'); return new Date(parseInt(p[0]),parseInt(p[1])-1,1).toLocaleString('default',{month:'long',year:'numeric'}); }
 
+// ═══════════════════════════════════════════════════
+// HOME VIEW TOGGLE (Transactions / Budget)
+// ═══════════════════════════════════════════════════
 function setHomeView(v){
   homeView=v;
-  document.getElementById('vBtn-transactions').classList.toggle('active',v==='transactions');
-  document.getElementById('vBtn-budget').classList.toggle('active',v==='budget');
-  var monthBar=document.getElementById('budgetMonthBar');
-  var txKpis=document.getElementById('txKpis');
-  var filterBar=document.getElementById('homeFilterBar');
-  if(v==='budget'){
-    if(!budgetMonth)budgetMonth=budgetMonthKey(new Date());
-    monthBar.style.display='flex';
-    txKpis.style.display='none';
-    filterBar.querySelectorAll('.filter-chip[id^="fBtn"]').forEach(function(b){b.style.display='none';});
-    var fab=document.getElementById('homeFab');if(fab)fab.style.display='none';
-    renderBudgetMonth();
-  } else {
-    monthBar.style.display='none';
-    txKpis.style.display='';
-    filterBar.querySelectorAll('.filter-chip[id^="fBtn"]').forEach(function(b){b.style.display='';});
-    var fab=document.getElementById('homeFab');if(fab)fab.style.display='';
-    renderHome();
-  }
+  var isB=(v==='budget');
+  document.getElementById('vBtn-transactions').classList.toggle('active',!isB);
+  document.getElementById('vBtn-budget').classList.toggle('active',isB);
+  document.getElementById('budgetMonthBar').style.display=isB?'flex':'none';
+  document.getElementById('txKpis').style.display=isB?'none':'';
+  document.getElementById('homeFab').style.display=isB?'none':'';
+  var fb=document.getElementById('homeFilterBar');
+  fb.querySelectorAll('.filter-chip[id^="fBtn"]').forEach(function(b){b.style.display=isB?'none':'';});
+  if(isB){if(!budgetMonth)budgetMonth=budgetMonthKey(new Date());renderBudgetMonth();}
+  else renderHome();
 }
 
 function shiftBudgetMonth(dir){
@@ -1835,169 +1829,200 @@ function shiftBudgetMonth(dir){
   renderBudgetMonth();
 }
 
+// ═══════════════════════════════════════════════════
+// BUDGET RENDER
+// ═══════════════════════════════════════════════════
 function renderBudgetMonth(){
-  if(!budgetMonth)budgetMonth=budgetMonthKey(new Date());
   document.getElementById('budgetMonthLbl').textContent=budgetMonthLabel(budgetMonth);
-  var budget=state.budgets[budgetMonth]||{income:0,cats:{},subs:{},dues:{}};
-  var cats=budget.cats||{};
-  var subs=budget.subs||{};
-  var dues=budget.dues||{};
-  var acctId=(document.getElementById('homeAcctFilter')||{}).value||'all';
 
+  // Load budget — always default to empty objects so nothing crashes
+  if(!state.budgets)state.budgets={};
+  var bud=state.budgets[budgetMonth]||{};
+  var incGoal   = parseFloat(bud.income||0);
+  var catGoals  = bud.cats||{};
+  var subGoals  = bud.subs||{};
+  var dueDays   = bud.dues||{};
+
+  // Compute actuals from manualTxs for this month
   var mp=budgetMonth.split('-');
   var mFrom=new Date(parseInt(mp[0]),parseInt(mp[1])-1,1);
-  var mTo=new Date(parseInt(mp[0]),parseInt(mp[1]),0,23,59,59);
-  var allTxs=state.manualTxs.filter(function(t){
-    if(acctId!=='all'&&t.accountId!==acctId)return false;
+  var mTo  =new Date(parseInt(mp[0]),parseInt(mp[1]),0,23,59,59);
+  var acctId=(document.getElementById('homeAcctFilter')||{}).value||'all';
+  var incActual=0, catActuals={}, subActuals={};
+  state.manualTxs.forEach(function(t){
+    if(acctId!=='all'&&t.accountId!==acctId)return;
     var d=new Date(t.date+'T00:00:00');
-    return d>=mFrom&&d<=mTo;
-  });
-  var subActuals={},catActuals={},incActual=0;
-  allTxs.forEach(function(t){
-    if(t.type==='income'){incActual+=parseFloat(t.amount);}
-    else{
-      var sub=t.category||'Miscellaneous';
-      var par=getParentOf(sub)||'Other';
-      subActuals[sub]=(subActuals[sub]||0)+parseFloat(t.amount);
-      catActuals[par]=(catActuals[par]||0)+parseFloat(t.amount);
-    }
+    if(d<mFrom||d>mTo)return;
+    if(t.type==='income'){incActual+=parseFloat(t.amount);return;}
+    var sub=t.category||'Miscellaneous';
+    var par=getParentOf(sub)||'Other';
+    subActuals[sub]=(subActuals[sub]||0)+parseFloat(t.amount);
+    catActuals[par]=(catActuals[par]||0)+parseFloat(t.amount);
   });
 
-  var incGoal=parseFloat(budget.income||0);
-  var totalExpGoal=Object.keys(cats).reduce(function(s,k){return s+parseFloat(cats[k]||0);},0);
+  // Projected totals (what user SET, not actuals)
+  var totalExpGoal=Object.keys(catGoals).reduce(function(s,k){return s+parseFloat(catGoals[k]||0);},0);
   var balGoal=incGoal-totalExpGoal;
+
+  // Health counts
   var onTrack=0,over=0,noGoal=0;
   CAT_TREE.filter(function(p){return p.id!=='income';}).forEach(function(p){
-    var g=parseFloat(cats[p.name]||0);
+    var g=parseFloat(catGoals[p.name]||0);
     if(g>0){if((catActuals[p.name]||0)<=g)onTrack++;else over++;}else noGoal++;
   });
-  function sc(a,g){if(!g)return'dim';return a>=g?'bad':a/g>=0.8?'warn':'good';}
-  function bw(a,g){if(!g)return 0;return Math.min(100,Math.round(a/g*100));}
-  var td=new Date().getDate();
 
-  var html=
-    '<div class="budget-health" style="margin-bottom:8px">'+
-      '<div class="bh-card" style="background:var(--moss-dim);border-color:var(--moss-light)"><span class="bh-val" style="color:#90E8AA">'+fmt(incGoal)+'</span><span class="bh-label" style="color:rgba(255,255,255,0.45)">Projected Income</span></div>'+
-      '<div class="bh-card" style="background:var(--moss-dim);border-color:var(--moss-light)"><span class="bh-val" style="color:#F5A090">'+fmt(totalExpGoal)+'</span><span class="bh-label" style="color:rgba(255,255,255,0.45)">Projected Expenses</span></div>'+
-      '<div class="bh-card" style="background:var(--moss-dim);border-color:var(--moss-light)"><span class="bh-val '+(balGoal>=0?'good':'bad')+'">'+fmt(balGoal,true)+'</span><span class="bh-label" style="color:rgba(255,255,255,0.45)">Projected Balance</span></div>'+
-    '</div>'+
-    '<div class="budget-health" style="margin-bottom:12px">'+
-      '<div class="bh-card"><span class="bh-val '+(onTrack>0?'good':'dim')+'">'+onTrack+'</span><span class="bh-label">On Track</span></div>'+
-      '<div class="bh-card"><span class="bh-val '+(over>0?'bad':'dim')+'">'+over+'</span><span class="bh-label">Over Budget</span></div>'+
-      '<div class="bh-card"><span class="bh-val dim">'+noGoal+'</span><span class="bh-label">No Goal Set</span></div>'+
-    '</div>'+
-    (incGoal===0&&totalExpGoal===0?'<div style="background:var(--amber-pale);border:1px solid var(--amber);border-radius:var(--radius-sm);padding:10px 13px;margin-bottom:12px;font-size:12px;color:var(--amber);text-align:center">Tap any category row to set a budget goal</div>':'')+
-    '<div class="budget-cat-block" style="margin-bottom:10px" id="budgetIncomeRow">'+
-      '<div class="budget-cat-hd" style="cursor:pointer">'+
-        '<span class="budget-cat-icon">\uD83D\uDCBC</span>'+
-        '<span class="budget-cat-name">Income</span>'+
-        '<span style="font-family:DM Mono,monospace;font-size:11px;color:rgba(255,255,255,0.6);margin-right:6px">'+(incGoal?fmt(incGoal):'tap to set')+'</span>'+
-      '</div>'+
-      (incGoal?
-        '<div class="budget-cat-bar-wrap">'+
-          '<div class="budget-bar-track"><div class="budget-bar-fill '+(incActual>=incGoal?'good':'warn')+'" style="width:'+bw(incActual,incGoal)+'%"></div></div>'+
-          '<div class="budget-bar-stats">'+
-            '<div class="bstat"><span class="bstat-val dim">'+fmt(incGoal)+'</span><span class="bstat-label">Goal</span></div>'+
-            '<div class="bstat"><span class="bstat-val good">'+fmt(incActual)+'</span><span class="bstat-label">Actual</span></div>'+
-            '<div class="bstat"><span class="bstat-val">'+(incGoal?Math.round(incActual/incGoal*100)+'%':'--')+'</span><span class="bstat-label">%</span></div>'+
-            '<div class="bstat"><span class="bstat-val '+(incActual>=incGoal?'good':'warn')+'">'+fmt(incActual-incGoal,true)+'</span><span class="bstat-label">Variance</span></div>'+
-          '</div>'+
-        '</div>':'')+
-    '</div>'+
-    '<span class="section-label">Expense Categories</span>';
+  var today_d=new Date().getDate();
+  function status(a,g){if(!g)return'dim';if(a>=g)return'bad';if(a/g>=0.8)return'warn';return'good';}
+  function bar(a,g){return g?Math.min(100,Math.round(a/g*100)):0;}
 
+  // Build HTML
+  var h='';
+
+  // — Summary row (projections) —
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px">';
+  h+='<div class="bh-card" style="background:var(--moss-dim);border-color:var(--moss-light)">';
+  h+='<span class="bh-val" style="color:#90E8AA">'+fmt(incGoal)+'</span><span class="bh-label" style="color:rgba(255,255,255,.4)">Income Goal</span></div>';
+  h+='<div class="bh-card" style="background:var(--moss-dim);border-color:var(--moss-light)">';
+  h+='<span class="bh-val" style="color:#F5A090">'+fmt(totalExpGoal)+'</span><span class="bh-label" style="color:rgba(255,255,255,.4)">Expense Budget</span></div>';
+  h+='<div class="bh-card" style="background:var(--moss-dim);border-color:var(--moss-light)">';
+  h+='<span class="bh-val '+(balGoal>=0?'good':'bad')+'">'+fmt(balGoal,true)+'</span><span class="bh-label" style="color:rgba(255,255,255,.4)">Projected Balance</span></div>';
+  h+='</div>';
+
+  // — Health row —
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px">';
+  h+='<div class="bh-card"><span class="bh-val '+(onTrack>0?'good':'dim')+'">'+onTrack+'</span><span class="bh-label">On Track</span></div>';
+  h+='<div class="bh-card"><span class="bh-val '+(over>0?'bad':'dim')+'">'+over+'</span><span class="bh-label">Over Budget</span></div>';
+  h+='<div class="bh-card"><span class="bh-val dim">'+noGoal+'</span><span class="bh-label">No Goal Set</span></div>';
+  h+='</div>';
+
+  // — Income row —
+  h+='<div class="budget-cat-block" style="margin-bottom:10px">';
+  h+='<div class="budget-cat-hd" id="budgetIncomeHd" style="cursor:pointer">';
+  h+='<span class="budget-cat-icon">\uD83D\uDCBC</span>';
+  h+='<span class="budget-cat-name">Income Goal</span>';
+  h+='<span style="font-family:DM Mono,monospace;font-size:12px;color:#90E8AA;font-weight:600">'+fmt(incGoal)+'</span>';
+  h+='<span style="font-size:10px;color:rgba(255,255,255,0.4);margin-left:6px">tap to edit</span>';
+  h+='</div>';
+  if(incGoal){
+    h+='<div style="padding:0 13px 10px">';
+    h+='<div class="budget-bar-track"><div class="budget-bar-fill '+(incActual>=incGoal?'good':'warn')+'" style="width:'+bar(incActual,incGoal)+'%"></div></div>';
+    h+='<div style="display:flex;justify-content:space-between;font-size:10px;font-family:DM Mono,monospace;margin-top:3px">';
+    h+='<span style="color:rgba(255,255,255,0.5)">actual: '+fmt(incActual)+'</span>';
+    h+='<span style="color:rgba(255,255,255,0.5)">'+Math.round(bar(incActual,incGoal))+'%</span>';
+    h+='</div></div>';
+  }
+  h+='</div>';
+
+  // — Category blocks (always expanded) —
+  h+='<span class="section-label">Expense Categories</span>';
   CAT_TREE.filter(function(p){return p.id!=='income';}).forEach(function(p){
-    var catGoal=parseFloat(cats[p.name]||0);
-    var catActual=catActuals[p.name]||0;
-    var bodyId='bbudget_'+p.id;
+    var catGoal  = parseFloat(catGoals[p.name]||0);
+    var catActual= catActuals[p.name]||0;
+    var st=status(catActual,catGoal);
     var csubs=(state.customSubs||[]).filter(function(x){return x.parent===p.name;});
     var allSubs=p.subs.concat(csubs.map(function(x){return x.name;}));
-    var subsHtml=allSubs.map(function(sub){
-      var sg=parseFloat(subs[sub]||0),sa=subActuals[sub]||0;
-      var dueDay=parseInt(dues[sub]||0),db='';
-      if(dueDay){
-        var dl=dueDay-td;
-        if(sa>=sg&&sg>0)db='<span class="due-badge paid">\u2713 paid</span>';
-        else if(dl<0)db='<span class="due-badge overdue">overdue '+Math.abs(dl)+'d</span>';
-        else if(dl<=5)db='<span class="due-badge upcoming">due in '+dl+'d</span>';
-        else db='<span style="font-size:9px;color:var(--text3);flex-shrink:0">due '+dueDay+(dueDay===1?'st':dueDay===2?'nd':dueDay===3?'rd':'th')+'</span>';
-      }
-      return '<div class="budget-sub-row" data-sub="'+esc(sub)+'" data-parent="'+esc(p.name)+'">'+
-        '<span class="budget-sub-name">'+esc(sub)+'</span>'+db+
-        '<div class="budget-sub-bar-col">'+
-          (sg?'<div class="budget-sub-track"><div class="budget-sub-fill '+sc(sa,sg)+'" style="width:'+bw(sa,sg)+'%"></div></div>':'<div class="budget-sub-track"></div>')+
-          '<span class="budget-sub-pct">'+(sg?Math.round(sa/sg*100)+'%':'--')+'</span>'+
-        '</div>'+
-        '<span class="budget-sub-amt '+(sg?sc(sa,sg):'dim')+'">'+fmt(sa)+'</span>'+
-      '</div>';
-    }).join('');
 
-    html+='<div class="budget-cat-block">'+
-      '<div class="budget-cat-hd" data-bodyid="'+bodyId+'" data-catname="'+esc(p.name)+'" style="cursor:pointer">'+
-        '<span class="budget-cat-icon">'+p.icon+'</span>'+
-        '<span class="budget-cat-name">'+p.name+'</span>'+
-        '<span class="budget-cat-amt" style="font-family:DM Mono,monospace;font-size:11px;color:rgba(255,255,255,0.6);margin-right:4px">'+(catGoal?fmt(catGoal):'tap to set')+'</span>'+
-        '<span class="budget-cat-arrow">&#x203A;</span>'+
-      '</div>'+
-      (catGoal?
-        '<div class="budget-cat-bar-wrap">'+
-          '<div class="budget-bar-track"><div class="budget-bar-fill '+sc(catActual,catGoal)+'" style="width:'+bw(catActual,catGoal)+'%"></div></div>'+
-          '<div class="budget-bar-stats">'+
-            '<div class="bstat"><span class="bstat-val dim">'+fmt(catGoal)+'</span><span class="bstat-label">Goal</span></div>'+
-            '<div class="bstat"><span class="bstat-val '+sc(catActual,catGoal)+'">'+fmt(catActual)+'</span><span class="bstat-label">Actual</span></div>'+
-            '<div class="bstat"><span class="bstat-val">'+(catGoal?Math.round(catActual/catGoal*100)+'%':'--')+'</span><span class="bstat-label">%</span></div>'+
-            '<div class="bstat"><span class="bstat-val '+(catActual<=catGoal?'good':'bad')+'">'+fmt(catGoal-catActual,true)+'</span><span class="bstat-label">Left</span></div>'+
-          '</div>'+
-        '</div>':'')+
-      '<div class="budget-cat-body" id="'+bodyId+'">'+subsHtml+'</div>'+
-    '</div>';
+    h+='<div class="budget-cat-block" style="margin-bottom:7px">';
+    // Category header — always visible, click to set category total
+    h+='<div class="budget-cat-hd budget-editable-cat" data-catname="'+esc(p.name)+'" style="cursor:pointer">';
+    h+='<span class="budget-cat-icon">'+p.icon+'</span>';
+    h+='<span class="budget-cat-name">'+p.name+'</span>';
+    h+='<span style="font-family:DM Mono,monospace;font-size:12px;font-weight:600;color:'+(catGoal?'#90E8AA':'rgba(255,255,255,0.3)')+'">'+fmt(catGoal)+'</span>';
+    h+='</div>';
+    // Category bar (if goal set)
+    if(catGoal){
+      h+='<div style="padding:4px 13px 8px">';
+      h+='<div class="budget-bar-track"><div class="budget-bar-fill '+st+'" style="width:'+bar(catActual,catGoal)+'%"></div></div>';
+      h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;margin-top:4px">';
+      h+='<div class="bstat"><span class="bstat-val dim">'+fmt(catGoal)+'</span><span class="bstat-label">Goal</span></div>';
+      h+='<div class="bstat"><span class="bstat-val '+st+'">'+fmt(catActual)+'</span><span class="bstat-label">Actual</span></div>';
+      h+='<div class="bstat"><span class="bstat-val">'+bar(catActual,catGoal)+'%</span><span class="bstat-label">Used</span></div>';
+      h+='<div class="bstat"><span class="bstat-val '+(catActual<=catGoal?'good':'bad')+'">'+fmt(catGoal-catActual,true)+'</span><span class="bstat-label">Left</span></div>';
+      h+='</div></div>';
+    }
+    // Sub-category rows (always shown)
+    h+='<div style="border-top:1px solid var(--border-soft)">';
+    allSubs.forEach(function(sub){
+      var sg=parseFloat(subGoals[sub]||0);
+      var sa=subActuals[sub]||0;
+      var dd=parseInt(dueDays[sub]||0);
+      var sst=status(sa,sg);
+      var badge='';
+      if(dd){
+        var dl=dd-today_d;
+        if(sa>=sg&&sg>0)badge='<span class="due-badge paid">\u2713</span>';
+        else if(dl<0)badge='<span class="due-badge overdue">'+Math.abs(dl)+'d late</span>';
+        else if(dl<=5)badge='<span class="due-badge upcoming">'+dl+'d</span>';
+        else badge='<span style="font-size:9px;color:var(--text3)">'+dd+(dd===1?'st':dd===2?'nd':dd===3?'rd':'th')+'</span>';
+      }
+      h+='<div class="budget-sub-row budget-editable-sub" data-sub="'+esc(sub)+'" data-parent="'+esc(p.name)+'">';
+      h+='<span class="budget-sub-name">'+esc(sub)+'</span>';
+      h+=badge;
+      if(sg){
+        h+='<div class="budget-sub-bar-col">';
+        h+='<div class="budget-sub-track"><div class="budget-sub-fill '+sst+'" style="width:'+bar(sa,sg)+'%"></div></div>';
+        h+='<span class="budget-sub-pct">'+bar(sa,sg)+'%</span>';
+        h+='</div>';
+        h+='<span class="budget-sub-amt '+sst+'">'+fmt(sg)+'</span>';
+      } else {
+        h+='<span style="font-size:10px;color:var(--text4);margin-left:auto">—</span>';
+      }
+      h+='</div>';
+    });
+    h+='</div></div>';
   });
 
-  var body=document.getElementById('homeBody');
-  body.innerHTML=html;
-  body.onclick=function(e){
-    if(e.target.closest('#budgetIncomeRow')){openBudgetSetSheet('income','Income',null);return;}
-    var sr=e.target.closest('.budget-sub-row[data-sub]');
+  document.getElementById('homeBody').innerHTML=h;
+  document.getElementById('homeBody').onclick=function(e){
+    if(e.target.closest('#budgetIncomeHd')){openBudgetSetSheet('income','Income',null);return;}
+    var cr=e.target.closest('.budget-editable-cat');
+    if(cr){openBudgetSetSheet('cat',cr.dataset.catname,null);return;}
+    var sr=e.target.closest('.budget-editable-sub');
     if(sr){openBudgetSetSheet('sub',sr.dataset.sub,sr.dataset.parent);return;}
-    var hd=e.target.closest('.budget-cat-hd[data-bodyid]');
-    if(hd){
-      if(e.target.closest('.budget-cat-amt')){openBudgetSetSheet('cat',hd.dataset.catname,null);return;}
-      var b=document.getElementById(hd.dataset.bodyid);
-      var a=hd.querySelector('.budget-cat-arrow');
-      if(b){var op=b.classList.toggle('open');if(a)a.classList.toggle('open',op);}
-    }
   };
 }
 
-function openBudgetSetSheet(type, name, parentName){
+// ═══════════════════════════════════════════════════
+// BUDGET EDIT (single item sheet)
+// ═══════════════════════════════════════════════════
+var _budgetTarget=null;
+
+function openBudgetSetSheet(type,name,parentName){
   if(!budgetMonth)budgetMonth=budgetMonthKey(new Date());
-  _budgetEditTarget={type:type,name:name,parentName:parentName};
-  var budget=state.budgets[budgetMonth]||{income:0,cats:{},subs:{},dues:{}};
-  var label = type==='income' ? 'Income Goal' : (parentName ? parentName+' → '+name : name);
-  document.getElementById('budgetEditTitle').textContent='Set Budget';
-  document.getElementById('budgetEditCatName').textContent=label;
-  var currentAmt = type==='income' ? (budget.income||'') : type==='cat' ? ((budget.cats||{})[name]||'') : ((budget.subs||{})[name]||'');
-  var currentDue = type==='sub' ? ((budget.dues||{})[name]||'') : '';
-  document.getElementById('budgetEditAmt').value=currentAmt;
-  document.getElementById('budgetEditDue').value=currentDue;
-  document.getElementById('budgetEditDue').style.display = type==='sub' ? '' : 'none';
-  document.getElementById('budgetEditDue').previousElementSibling.style.display = type==='sub' ? '' : 'none';
+  _budgetTarget={type:type,name:name};
+  if(!state.budgets)state.budgets={};
+  if(!state.budgets[budgetMonth])state.budgets[budgetMonth]={income:0,cats:{},subs:{},dues:{}};
+  var bud=state.budgets[budgetMonth];
+  var label=type==='income'?'Income Goal':name+(parentName?' ('+parentName+')':'');
+  document.getElementById('budgetEditTitle').textContent=label;
+  document.getElementById('budgetEditCatName').textContent='';
+  var amt=type==='income'?bud.income:type==='cat'?(bud.cats||{})[name]:(bud.subs||{})[name];
+  var due=type==='sub'?(bud.dues||{})[name]:'';
+  document.getElementById('budgetEditAmt').value=amt||'';
+  document.getElementById('budgetEditDue').value=due||'';
+  var dueGroup=document.getElementById('budgetEditDue').closest('.form-group');
+  if(dueGroup)dueGroup.style.display=type==='sub'?'':'none';
   openSheet('budgetEdit');
-  setTimeout(function(){document.getElementById('budgetEditAmt').focus();},150);
+  setTimeout(function(){document.getElementById('budgetEditAmt').select();},100);
 }
 
 function saveSingleBudget(){
-  if(!_budgetEditTarget||!budgetMonth)return;
+  if(!_budgetTarget||!budgetMonth)return;
   if(!state.budgets)state.budgets={};
   if(!state.budgets[budgetMonth])state.budgets[budgetMonth]={income:0,cats:{},subs:{},dues:{}};
-  var b=state.budgets[budgetMonth];
+  var bud=state.budgets[budgetMonth];
+  if(!bud.cats)bud.cats={};
+  if(!bud.subs)bud.subs={};
+  if(!bud.dues)bud.dues={};
   var amt=parseFloat(document.getElementById('budgetEditAmt').value)||0;
   var due=parseInt(document.getElementById('budgetEditDue').value)||0;
-  var t=_budgetEditTarget;
-  if(t.type==='income'){b.income=amt;}
-  else if(t.type==='cat'){if(amt)b.cats[t.name]=amt;else delete b.cats[t.name];}
-  else if(t.type==='sub'){if(amt)b.subs[t.name]=amt;else delete b.subs[t.name];if(due)b.dues[t.name]=due;else delete b.dues[t.name];}
-  save();closeSheet('budgetEdit');renderBudgetMonth();
+  var t=_budgetTarget;
+  if(t.type==='income'){bud.income=amt;}
+  else if(t.type==='cat'){if(amt)bud.cats[t.name]=amt;else delete bud.cats[t.name];}
+  else{if(amt)bud.subs[t.name]=amt;else delete bud.subs[t.name];if(due)bud.dues[t.name]=due;else delete bud.dues[t.name];}
+  save();
+  closeSheet('budgetEdit');
+  renderBudgetMonth();
   toast('\u2713 Saved');
 }
 
@@ -2006,7 +2031,6 @@ function clearSingleBudget(){
   document.getElementById('budgetEditDue').value='';
   saveSingleBudget();
 }
-
 
 checkExistingSession();
 
