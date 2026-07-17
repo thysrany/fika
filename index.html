@@ -1933,7 +1933,7 @@ function renderBudgetMonth(){
     h+='<div class="budget-cat-hd" data-bodyid="'+bodyId+'" style="cursor:pointer">';
     h+='<span class="budget-cat-icon">'+p.icon+'</span>';
     h+='<span class="budget-cat-name">'+p.name+'</span>';
-    h+='<span class="budget-editable-cat" data-catname="'+esc(p.name)+'" style="font-family:DM Mono,monospace;font-size:12px;font-weight:600;color:'+(displayTotal?'#90E8AA':'rgba(255,255,255,0.3)')+'">'+fmt(displayTotal)+'</span>';
+    h+='<span class="budget-editable-cat" data-catname="'+esc(p.name)+'" style="font-family:DM Mono,monospace;font-size:12px;font-weight:700;background:rgba(255,255,255,0.92);color:var(--text);padding:2px 9px;border-radius:20px">'+fmt(displayTotal)+'</span>';
     h+='<span class="budget-cat-arrow" style="margin-left:6px">&#x203A;</span>';
     h+='</div>';
     // Category bar (if cat-level goal set)
