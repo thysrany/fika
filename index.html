@@ -1903,12 +1903,14 @@ function renderBudgetMonth(){
   var totalExpActual=Object.keys(catActuals).reduce(function(s,k){return s+catActuals[k];},0);
   var balGoal=incGoal-totalExpGoal;
   var balActual=incActual-totalExpActual;
+  var hasBudget=incGoal>0||totalExpGoal>0;
 
   var html='<div class="budget-health" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:8px">'+
-    '<div class="bh-card" style="background:var(--moss-dim);border-color:var(--moss-light)"><span class="bh-val" style="color:#90E8AA">'+fmt(incActual)+'</span><span class="bh-label" style="color:rgba(255,255,255,0.4)">Income</span></div>'+
-    '<div class="bh-card" style="background:var(--moss-dim);border-color:var(--moss-light)"><span class="bh-val" style="color:#F5A090">'+fmt(totalExpActual)+'</span><span class="bh-label" style="color:rgba(255,255,255,0.4)">Expenses</span></div>'+
-    '<div class="bh-card" style="background:var(--moss-dim);border-color:var(--moss-light)"><span class="bh-val '+(balActual>=0?'good':'bad')+'">'+fmt(balActual,true)+'</span><span class="bh-label" style="color:rgba(255,255,255,0.5)">Balance</span></div>'+
+    '<div class="bh-card" style="background:var(--moss-dim);border-color:var(--moss-light)"><span class="bh-val" style="color:#90E8AA">'+fmt(incGoal)+'</span><span class="bh-label" style="color:rgba(255,255,255,0.4)">Projected Income</span></div>'+
+    '<div class="bh-card" style="background:var(--moss-dim);border-color:var(--moss-light)"><span class="bh-val" style="color:#F5A090">'+fmt(totalExpGoal)+'</span><span class="bh-label" style="color:rgba(255,255,255,0.4)">Projected Expenses</span></div>'+
+    '<div class="bh-card" style="background:var(--moss-dim);border-color:var(--moss-light)"><span class="bh-val '+(balGoal>=0?'good':'bad')+'">'+fmt(balGoal,true)+'</span><span class="bh-label" style="color:rgba(255,255,255,0.5)">Projected Balance</span></div>'+
   '</div>'+
+  (!hasBudget?'<div style="background:var(--amber-pale);border:1px solid var(--amber);border-radius:var(--radius-sm);padding:10px 13px;margin-bottom:12px;font-size:12px;color:var(--amber);text-align:center">Tap <strong>+ Edit Budget</strong> to set your monthly projections</div>':'')+
   '<div class="budget-health" style="margin-bottom:12px">'+
     '<div class="bh-card"><span class="bh-val '+(onTrack+over>0?'good':'dim')+'">'+onTrack+'</span><span class="bh-label">On Track</span></div>'+
     '<div class="bh-card"><span class="bh-val '+(over>0?'bad':'dim')+'">'+over+'</span><span class="bh-label">Over Budget</span></div>'+
