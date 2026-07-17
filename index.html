@@ -1861,7 +1861,9 @@ function renderBudgetMonth(){
   });
 
   // Projected totals (what user SET, not actuals)
-  var totalExpGoal=Object.keys(catGoals).reduce(function(s,k){return s+parseFloat(catGoals[k]||0);},0);
+  var totalCatGoal=Object.keys(catGoals).reduce(function(s,k){return s+parseFloat(catGoals[k]||0);},0);
+  var totalSubGoal=Object.keys(subGoals).reduce(function(s,k){return s+parseFloat(subGoals[k]||0);},0);
+  var totalExpGoal=totalCatGoal>0?totalCatGoal:totalSubGoal;
   var balGoal=incGoal-totalExpGoal;
 
   // Health counts
