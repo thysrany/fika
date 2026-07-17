@@ -2069,7 +2069,12 @@ function openBudgetEditSheet(){
     }
   };
   openSheet('budgetEdit');
-  setTimeout(updateBudgetEditTotals,50);
+  // Expand all sections by default so all inputs are visible
+  setTimeout(function(){
+    document.querySelectorAll('.budget-cat-sec-body').forEach(function(b){b.classList.add('open');});
+    document.querySelectorAll('.budget-cat-sec-arrow').forEach(function(a){a.classList.add('open');});
+    updateBudgetEditTotals();
+  },50);
 }
 
 function updateBudgetEditTotals(){
@@ -2090,13 +2095,28 @@ function updateBudgetEditTotals(){
 function saveBudgetEdit(){
   if(!budgetMonth)budgetMonth=budgetMonthKey(new Date());
   var budget={income:parseFloat(document.getElementById('budgetIncomeInp').value)||0,cats:{},subs:{},dues:{}};
-  // Read all inputs directly from DOM — works whether expanded or not because
-  // we store values in _budgetEditCache as user types
-  Object.keys(_budgetEditCache.cats).forEach(function(k){if(_budgetEditCache.cats[k])budget.cats[k]=_budgetEditCache.cats[k];});
-  Object.keys(_budgetEditCache.subs).forEach(function(k){if(_budgetEditCache.subs[k])budget.subs[k]=_budgetEditCache.subs[k];});
-  Object.keys(_budgetEditCache.dues).forEach(function(k){if(_budgetEditCache.dues[k])budget.dues[k]=_budgetEditCache.dues[k];});
+  // Expand all sections so every input is in the DOM before reading
+  document.querySelectorAll('.budget-cat-sec-body').forEach(function(b){b.classList.add('open');});
+  document.querySelectorAll('.budget-cat-sec-arrow').forEach(function(a){a.classList.add('open');});
+  // Read category totals
+  CAT_TREE.filter(function(p){return p.id!=='income';}).forEach(function(p){
+    var el=document.getElementById('bcat_'+p.id);
+    var v=el?parseFloat(el.value)||0:0;
+    if(v)budget.cats[p.name]=v;
+    var customSubs=(state.customSubs||[]).filter(function(c){return c.parent===p.name;});
+    p.subs.concat(customSubs.map(function(c){return c.name;})).forEach(function(sub){
+      var safeId=sub.replace(/\W/g,'_');
+      var el2=document.getElementById('bsub_'+safeId);
+      var sv=el2?parseFloat(el2.value)||0:0;
+      if(sv)budget.subs[sub]=sv;
+      var el3=document.getElementById('bdue_'+safeId);
+      var dv=el3?parseInt(el3.value)||0:0;
+      if(dv)budget.dues[sub]=dv;
+    });
+  });
   if(!state.budgets)state.budgets={};
   state.budgets[budgetMonth]=budget;
+  console.log('Saved budget:', JSON.stringify(budget));
   save();closeSheet('budgetEdit');renderBudgetMonth();
   toast('\u2713 Budget saved');
 }
