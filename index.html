@@ -703,6 +703,7 @@ var state = {
 var activeTxType='expense', selectedCat=null, editingTxId=null;
 var editingAcctId=null, editingGoalIdx=null;
 var homeView='transactions', budgetMonth=null;
+var _budgetEditCache={cats:{},subs:{},dues:{}};
 var activeStmtId=null;
 var importParsedData=null;
 var dateFilter={mode:'month', from:null, to:null};
@@ -2009,7 +2010,9 @@ function renderBudgetMonth(){
 
 function openBudgetEditSheet(){
   if(!budgetMonth)budgetMonth=budgetMonthKey(new Date());
-  var budget=state.budgets[budgetMonth]||{income:0,cats:{},subs:{}};
+  var budget=state.budgets[budgetMonth]||{income:0,cats:{},subs:{},dues:{}};
+  // Initialize cache from saved budget
+  _budgetEditCache={cats:Object.assign({},budget.cats||{}),subs:Object.assign({},budget.subs||{}),dues:Object.assign({},budget.dues||{})};
   document.getElementById('budgetEditTitle').textContent='Budget — '+budgetMonthLabel(budgetMonth);
   document.getElementById('budgetIncomeInp').value=budget.income||'';
 
@@ -2025,8 +2028,8 @@ function openBudgetEditSheet(){
       return '<div class="budget-sub-edit-row">'+
         '<div class="budget-sub-edit-dot" style="background:'+p.color+'"></div>'+
         '<div class="budget-sub-edit-name">'+esc(sub)+'</div>'+
-        '<input class="budget-due-inp" id="bdue_'+esc(sub).replace(/\W/g,'_')+'" type="number" min="1" max="31" placeholder="day" value="'+sdue+'" title="Due day of month">'+
-        '<input class="budget-sub-edit-inp" id="bsub_'+esc(sub).replace(/\W/g,'_')+'" type="number" step="0.01" placeholder="—" value="'+sg+'">'+
+        '<input class="budget-due-inp" id="bdue_'+esc(sub).replace(/\W/g,'_')+'" data-sub="'+esc(sub)+'" type="number" min="1" max="31" placeholder="day" value="'+sdue+'" title="Due day of month">'+
+        '<input class="budget-sub-edit-inp" id="bsub_'+esc(sub).replace(/\W/g,'_')+'" data-sub="'+esc(sub)+'" type="number" step="0.01" placeholder="—" value="'+sg+'">'+
       '</div>';
     }).join('');
     html+='<div class="budget-cat-section">'+
@@ -2042,7 +2045,20 @@ function openBudgetEditSheet(){
   document.getElementById('budgetCatEditList').innerHTML=html;
   var catList=document.getElementById('budgetCatEditList');
   catList.oninput=function(e){
-    if(e.target.classList.contains('budget-sub-edit-inp')||e.target.classList.contains('budget-cat-sec-inp'))updateBudgetEditTotals();
+    var t=e.target;
+    if(t.classList.contains('budget-cat-sec-inp')){
+      var pid=t.id.replace('bcat_','');
+      var pCat=CAT_TREE.find(function(p){return p.id===pid;});
+      if(pCat)_budgetEditCache.cats[pCat.name]=parseFloat(t.value)||0;
+      updateBudgetEditTotals();
+    } else if(t.classList.contains('budget-sub-edit-inp')){
+      var subName=t.dataset.sub;
+      if(subName)_budgetEditCache.subs[subName]=parseFloat(t.value)||0;
+      updateBudgetEditTotals();
+    } else if(t.classList.contains('budget-due-inp')){
+      var subName=t.dataset.sub;
+      if(subName)_budgetEditCache.dues[subName]=parseInt(t.value)||0;
+    }
   };
   catList.onclick=function(e){
     var hd=e.target.closest('.budget-cat-sec-hd');
@@ -2058,17 +2074,11 @@ function openBudgetEditSheet(){
 
 function updateBudgetEditTotals(){
   var inc=parseFloat(document.getElementById('budgetIncomeInp').value)||0;
-  // Sum all category-level inputs that have a value
-  var exp=0;
-  document.querySelectorAll('.budget-cat-sec-inp').forEach(function(el){
-    exp+=parseFloat(el.value)||0;
-  });
-  // If no category totals set, fall back to summing sub-category inputs
-  if(exp===0){
-    document.querySelectorAll('.budget-sub-edit-inp').forEach(function(el){
-      exp+=parseFloat(el.value)||0;
-    });
-  }
+  // Sum from cache (captures collapsed sections too)
+  var expCats=Object.values(_budgetEditCache.cats).reduce(function(s,v){return s+(parseFloat(v)||0);},0);
+  var expSubs=Object.values(_budgetEditCache.subs).reduce(function(s,v){return s+(parseFloat(v)||0);},0);
+  // Use cat totals if any set, otherwise fall back to sub totals
+  var exp=expCats>0?expCats:expSubs;
   var bal=inc-exp;
   document.getElementById('betInc').textContent=fmt(inc);
   document.getElementById('betExp').textContent=fmt(exp);
@@ -2080,20 +2090,11 @@ function updateBudgetEditTotals(){
 function saveBudgetEdit(){
   if(!budgetMonth)budgetMonth=budgetMonthKey(new Date());
   var budget={income:parseFloat(document.getElementById('budgetIncomeInp').value)||0,cats:{},subs:{},dues:{}};
-  CAT_TREE.filter(function(p){return p.id!=='income';}).forEach(function(p){
-    var v=parseFloat(document.getElementById('bcat_'+p.id).value)||0;
-    if(v)budget.cats[p.name]=v;
-    var customSubs=(state.customSubs||[]).filter(function(c){return c.parent===p.name;});
-    p.subs.concat(customSubs.map(function(c){return c.name;})).forEach(function(sub){
-      var safeId=sub.replace(/\W/g,'_');
-      var el=document.getElementById('bsub_'+safeId);
-      var sv=el?parseFloat(el.value)||0:0;
-      if(sv)budget.subs[sub]=sv;
-      var del=document.getElementById('bdue_'+safeId);
-      var dv=del?parseInt(del.value)||0:0;
-      if(dv)budget.dues[sub]=dv;
-    });
-  });
+  // Read all inputs directly from DOM — works whether expanded or not because
+  // we store values in _budgetEditCache as user types
+  Object.keys(_budgetEditCache.cats).forEach(function(k){if(_budgetEditCache.cats[k])budget.cats[k]=_budgetEditCache.cats[k];});
+  Object.keys(_budgetEditCache.subs).forEach(function(k){if(_budgetEditCache.subs[k])budget.subs[k]=_budgetEditCache.subs[k];});
+  Object.keys(_budgetEditCache.dues).forEach(function(k){if(_budgetEditCache.dues[k])budget.dues[k]=_budgetEditCache.dues[k];});
   if(!state.budgets)state.budgets={};
   state.budgets[budgetMonth]=budget;
   save();closeSheet('budgetEdit');renderBudgetMonth();
