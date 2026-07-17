@@ -376,17 +376,16 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
         </div>
       </div>
       <!-- Budget month nav (shown only in budget view) -->
-      <div id="budgetMonthBar" style="display:none;align-items:center;justify-content:space-between">
+      <div id="budgetMonthBar" style="display:none;align-items:center;justify-content:center">
         <div class="budget-month-nav">
           <button class="budget-month-btn" onclick="shiftBudgetMonth(-1)">&#x2039;</button>
           <span class="budget-month-lbl" id="budgetMonthLbl"></span>
           <button class="budget-month-btn" onclick="shiftBudgetMonth(1)">&#x203A;</button>
         </div>
-        <button class="ghost-btn" style="background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);font-size:11px" onclick="openBudgetEditSheet()">&#9998; Edit Budget</button>
       </div>
     </div>
     <div class="home-body" id="homeBody"></div>
-    <button class="fab" onclick="homeView==='budget'?openBudgetEditSheet():openAddTx()" title="Add">+</button>
+    <button class="fab" onclick="openAddTx()" id="homeFab" title="Add">+</button>
   </div>
 
   <!-- REPORTS -->
@@ -586,25 +585,15 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
 <div class="sheet-bg" id="sheet-budgetEdit" onclick="closeSheetBg(event,'budgetEdit')">
   <div class="sheet"><div class="sheet-handle"></div>
     <div class="sheet-title">
-      <span id="budgetEditTitle">Edit Budget</span>
+      <span id="budgetEditTitle">Set Budget</span>
       <button class="sheet-close" onclick="closeSheet('budgetEdit')">&#xD7;</button>
     </div>
     <div class="sheet-body">
-      <div class="budget-edit-totals" id="budgetEditTotals">
-        <div class="bet-card"><span class="bet-val inc" id="betInc">$0</span><span class="bet-label">Income</span></div>
-        <div class="bet-card"><span class="bet-val exp" id="betExp">$0</span><span class="bet-label">Expenses</span></div>
-        <div class="bet-card"><span class="bet-val" id="betBal">$0</span><span class="bet-label">Balance</span></div>
-      </div>
-      <div class="budget-income-row">
-        <div class="budget-income-label">&#x1f4b0; Income Goal</div>
-        <input class="budget-income-inp" id="budgetIncomeInp" type="number" step="0.01" placeholder="0.00" oninput="updateBudgetEditTotals()">
-      </div>
-      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.7px;margin-bottom:8px">Spending Limits by Category</div>
-      <div id="budgetCatEditList"></div>
-      <div style="display:flex;gap:8px;margin-top:14px">
-        <button class="ghost-btn" style="flex:1" onclick="copyLastMonthBudget()">&#x2398; Copy Last Month</button>
-        <button class="pri-btn" style="flex:1;margin-top:0" onclick="saveBudgetEdit()">Save Budget</button>
-      </div>
+      <div class="form-group"><div class="form-label">Category</div><div id="budgetEditCatName" style="font-size:14px;font-weight:700;color:var(--text);padding:4px 0"></div></div>
+      <div class="form-group"><div class="form-label">Monthly Budget ($)</div><input class="form-input mono" id="budgetEditAmt" type="number" step="0.01" placeholder="0.00"></div>
+      <div class="form-group"><div class="form-label">Due Day of Month</div><input class="form-input" id="budgetEditDue" type="number" min="1" max="31" placeholder="e.g. 15 (optional)"></div>
+      <button class="pri-btn" onclick="saveSingleBudget()">Save</button>
+      <button class="ghost-btn" style="width:100%;text-align:center;margin-top:8px" onclick="clearSingleBudget()">Clear</button>
     </div>
   </div>
 </div>
@@ -703,7 +692,6 @@ var state = {
 var activeTxType='expense', selectedCat=null, editingTxId=null;
 var editingAcctId=null, editingGoalIdx=null;
 var homeView='transactions', budgetMonth=null;
-var _budgetEditCache={cats:{},subs:{},dues:{}};
 var activeStmtId=null;
 var importParsedData=null;
 var dateFilter={mode:'month', from:null, to:null};
@@ -1829,11 +1817,13 @@ function setHomeView(v){
     monthBar.style.display='flex';
     txKpis.style.display='none';
     filterBar.querySelectorAll('.filter-chip[id^="fBtn"]').forEach(function(b){b.style.display='none';});
+    var fab=document.getElementById('homeFab');if(fab)fab.style.display='none';
     renderBudgetMonth();
   } else {
     monthBar.style.display='none';
     txKpis.style.display='';
     filterBar.querySelectorAll('.filter-chip[id^="fBtn"]').forEach(function(b){b.style.display='';});
+    var fab=document.getElementById('homeFab');if(fab)fab.style.display='';
     renderHome();
   }
 }
@@ -1921,9 +1911,10 @@ function renderBudgetMonth(){
   // Income row
   if(incGoal){
     html+='<div class="budget-cat-block" style="margin-bottom:10px">'+
-      '<div class="budget-cat-hd" style="cursor:default">'+
+      '<div class="budget-cat-hd" style="cursor:pointer" class="budget-income-hd">'+
         '<span class="budget-cat-icon">💼</span>'+
         '<span class="budget-cat-name">Income</span>'+
+        '<span style="font-size:10px;color:rgba(255,255,255,0.5)">tap to edit</span>'+
       '</div>'+
       '<div class="budget-cat-bar-wrap">'+
         '<div class="budget-bar-track"><div class="budget-bar-fill '+incStatus+'" style="width:'+barWidth(incActual,incGoal)+'%"></div></div>'+
@@ -1966,7 +1957,7 @@ function renderBudgetMonth(){
         else if(daysLeft<=5){dueBadge='<span class="due-badge upcoming">due in '+daysLeft+'d</span>';}
         else{dueBadge='<span class="due-badge" style="font-size:9px;color:var(--text3)">due '+dueDay+(dueDay===1?'st':dueDay===2?'nd':dueDay===3?'rd':'th')+'</span>';}
       }
-      return '<div class="budget-sub-row">'+
+      return '<div class="budget-sub-row" data-sub="'+esc(sub)+'" data-parent="'+esc(p.name)+'">'+
         '<span class="budget-sub-name">'+esc(sub)+'</span>'+
         dueBadge+
         '<div class="budget-sub-bar-col">'+
@@ -1978,10 +1969,11 @@ function renderBudgetMonth(){
     }).join('');
 
     html+='<div class="budget-cat-block">'+
-      '<div class="budget-cat-hd" data-bodyid="'+bodyId+'">'+
+      '<div class="budget-cat-hd" data-bodyid="'+bodyId+'" data-catname="'+esc(p.name)+'">'+
         '<span class="budget-cat-icon">'+p.icon+'</span>'+
         '<span class="budget-cat-name">'+p.name+'</span>'+
-        (catGoal?'<span class="budget-cat-arrow">&#x203A;</span>':'<span style="font-size:10px;color:var(--text4);font-style:italic;margin-right:6px">no goal</span>')+
+        '<span class="budget-cat-amt" style="font-family:DM Mono,monospace;font-size:11px;color:rgba(255,255,255,0.6);margin-right:4px">'+(catGoal?fmt(catGoal):'tap to set')+'</span>'+
+        (catGoal?'<span class="budget-cat-arrow">&#x203A;</span>':'<span class="budget-cat-arrow">&#x203A;</span>')+
       '</div>'+
       (catGoal?
         '<div class="budget-cat-bar-wrap">'+
@@ -1999,8 +1991,18 @@ function renderBudgetMonth(){
 
   body.innerHTML=html;
   body.onclick=function(e){
+    // Tap sub-row -> edit sub budget
+    var subRow=e.target.closest('.budget-sub-row[data-sub]');
+    if(subRow){openBudgetSetSheet('sub',subRow.dataset.sub,subRow.dataset.parent);return;}
+    // Tap cat header -> toggle expand; tap cat amount -> edit cat budget
     var hd=e.target.closest('.budget-cat-hd[data-bodyid]');
     if(hd){
+      if(e.target.closest('.budget-cat-amt')||e.target.classList.contains('budget-cat-amt')){
+        openBudgetSetSheet('cat',hd.dataset.catname||hd.dataset.bname,null);return;
+      }
+      if(hd.dataset.btype==='income'){openBudgetSetSheet('income','Income',null);return;}
+    var incHd=e.target.closest('.budget-income-hd');
+    if(incHd){openBudgetSetSheet('income','Income',null);return;}
       var b=document.getElementById(hd.dataset.bodyid);
       var a=hd.querySelector('.budget-cat-arrow');
       if(b){var op=b.classList.toggle('open');if(a)a.classList.toggle('open',op);}
@@ -2008,141 +2010,46 @@ function renderBudgetMonth(){
   };
 }
 
-function openBudgetEditSheet(){
+var _budgetEditTarget=null; // {type:'income'|'cat'|'sub', name, parentName}
+
+function openBudgetSetSheet(type, name, parentName){
   if(!budgetMonth)budgetMonth=budgetMonthKey(new Date());
+  _budgetEditTarget={type:type,name:name,parentName:parentName};
   var budget=state.budgets[budgetMonth]||{income:0,cats:{},subs:{},dues:{}};
-  // Initialize cache from saved budget
-  _budgetEditCache={cats:Object.assign({},budget.cats||{}),subs:Object.assign({},budget.subs||{}),dues:Object.assign({},budget.dues||{})};
-  document.getElementById('budgetEditTitle').textContent='Budget — '+budgetMonthLabel(budgetMonth);
-  document.getElementById('budgetIncomeInp').value=budget.income||'';
-
-  var html='';
-  CAT_TREE.filter(function(p){return p.id!=='income';}).forEach(function(p){
-    var catGoal=parseFloat((budget.cats||{})[p.name]||0)||'';
-    var bodyId='bedit_'+p.id;
-    var customSubs=(state.customSubs||[]).filter(function(c){return c.parent===p.name;});
-    var allSubs=p.subs.concat(customSubs.map(function(c){return c.name;}));
-    var subsHtml=allSubs.map(function(sub){
-      var sg=parseFloat((budget.subs||{})[sub]||0)||'';
-      var sdue=(budget.dues||{})[sub]||'';
-      return '<div class="budget-sub-edit-row">'+
-        '<div class="budget-sub-edit-dot" style="background:'+p.color+'"></div>'+
-        '<div class="budget-sub-edit-name">'+esc(sub)+'</div>'+
-        '<input class="budget-due-inp" id="bdue_'+esc(sub).replace(/\W/g,'_')+'" data-sub="'+esc(sub)+'" type="number" min="1" max="31" placeholder="day" value="'+sdue+'" title="Due day of month">'+
-        '<input class="budget-sub-edit-inp" id="bsub_'+esc(sub).replace(/\W/g,'_')+'" data-sub="'+esc(sub)+'" type="number" step="0.01" placeholder="—" value="'+sg+'">'+
-      '</div>';
-    }).join('');
-    html+='<div class="budget-cat-section">'+
-      '<div class="budget-cat-sec-hd" data-bodyid="'+bodyId+'">'+
-        '<span class="budget-cat-sec-icon">'+p.icon+'</span>'+
-        '<span class="budget-cat-sec-name">'+p.name+'</span>'+
-        '<input class="budget-cat-sec-inp" id="bcat_'+p.id+'" type="number" step="0.01" placeholder="Total limit" value="'+catGoal+'" onclick="event.stopPropagation()" oninput="updateBudgetEditTotals()">'+
-        '<span class="budget-cat-sec-arrow">&#x203A;</span>'+
-      '</div>'+
-      '<div class="budget-cat-sec-body" id="'+bodyId+'">'+subsHtml+'</div>'+
-    '</div>';
-  });
-  document.getElementById('budgetCatEditList').innerHTML=html;
-  var catList=document.getElementById('budgetCatEditList');
-  catList.oninput=function(e){
-    var t=e.target;
-    if(t.classList.contains('budget-cat-sec-inp')){
-      var pid=t.id.replace('bcat_','');
-      var pCat=CAT_TREE.find(function(p){return p.id===pid;});
-      if(pCat)_budgetEditCache.cats[pCat.name]=parseFloat(t.value)||0;
-      updateBudgetEditTotals();
-    } else if(t.classList.contains('budget-sub-edit-inp')){
-      var subName=t.dataset.sub;
-      if(subName)_budgetEditCache.subs[subName]=parseFloat(t.value)||0;
-      updateBudgetEditTotals();
-    } else if(t.classList.contains('budget-due-inp')){
-      var subName=t.dataset.sub;
-      if(subName)_budgetEditCache.dues[subName]=parseInt(t.value)||0;
-    }
-  };
-  catList.onclick=function(e){
-    var hd=e.target.closest('.budget-cat-sec-hd');
-    if(hd&&!e.target.closest('input')){
-      var b=document.getElementById(hd.dataset.bodyid);
-      var a=hd.querySelector('.budget-cat-sec-arrow');
-      if(b){var op=b.classList.toggle('open');if(a)a.classList.toggle('open',op);}
-    }
-  };
+  var label = type==='income' ? 'Income Goal' : (parentName ? parentName+' → '+name : name);
+  document.getElementById('budgetEditTitle').textContent='Set Budget';
+  document.getElementById('budgetEditCatName').textContent=label;
+  var currentAmt = type==='income' ? (budget.income||'') : type==='cat' ? ((budget.cats||{})[name]||'') : ((budget.subs||{})[name]||'');
+  var currentDue = type==='sub' ? ((budget.dues||{})[name]||'') : '';
+  document.getElementById('budgetEditAmt').value=currentAmt;
+  document.getElementById('budgetEditDue').value=currentDue;
+  document.getElementById('budgetEditDue').style.display = type==='sub' ? '' : 'none';
+  document.getElementById('budgetEditDue').previousElementSibling.style.display = type==='sub' ? '' : 'none';
   openSheet('budgetEdit');
-  // Expand all sections by default so all inputs are visible
-  setTimeout(function(){
-    document.querySelectorAll('.budget-cat-sec-body').forEach(function(b){b.classList.add('open');});
-    document.querySelectorAll('.budget-cat-sec-arrow').forEach(function(a){a.classList.add('open');});
-    updateBudgetEditTotals();
-  },50);
+  setTimeout(function(){document.getElementById('budgetEditAmt').focus();},150);
 }
 
-function updateBudgetEditTotals(){
-  var inc=parseFloat(document.getElementById('budgetIncomeInp').value)||0;
-  // Sum from cache (captures collapsed sections too)
-  var expCats=Object.values(_budgetEditCache.cats).reduce(function(s,v){return s+(parseFloat(v)||0);},0);
-  var expSubs=Object.values(_budgetEditCache.subs).reduce(function(s,v){return s+(parseFloat(v)||0);},0);
-  // Use cat totals if any set, otherwise fall back to sub totals
-  var exp=expCats>0?expCats:expSubs;
-  var bal=inc-exp;
-  document.getElementById('betInc').textContent=fmt(inc);
-  document.getElementById('betExp').textContent=fmt(exp);
-  var balEl=document.getElementById('betBal');
-  balEl.textContent=fmt(bal,true);
-  balEl.className='bet-val '+(bal>=0?'bal-pos':'bal-neg');
-}
-
-function saveBudgetEdit(){
-  if(!budgetMonth)budgetMonth=budgetMonthKey(new Date());
-  var budget={income:parseFloat(document.getElementById('budgetIncomeInp').value)||0,cats:{},subs:{},dues:{}};
-  // Expand all sections so every input is in the DOM before reading
-  document.querySelectorAll('.budget-cat-sec-body').forEach(function(b){b.classList.add('open');});
-  document.querySelectorAll('.budget-cat-sec-arrow').forEach(function(a){a.classList.add('open');});
-  // Read category totals
-  CAT_TREE.filter(function(p){return p.id!=='income';}).forEach(function(p){
-    var el=document.getElementById('bcat_'+p.id);
-    var v=el?parseFloat(el.value)||0:0;
-    if(v)budget.cats[p.name]=v;
-    var customSubs=(state.customSubs||[]).filter(function(c){return c.parent===p.name;});
-    p.subs.concat(customSubs.map(function(c){return c.name;})).forEach(function(sub){
-      var safeId=sub.replace(/\W/g,'_');
-      var el2=document.getElementById('bsub_'+safeId);
-      var sv=el2?parseFloat(el2.value)||0:0;
-      if(sv)budget.subs[sub]=sv;
-      var el3=document.getElementById('bdue_'+safeId);
-      var dv=el3?parseInt(el3.value)||0:0;
-      if(dv)budget.dues[sub]=dv;
-    });
-  });
+function saveSingleBudget(){
+  if(!_budgetEditTarget||!budgetMonth)return;
   if(!state.budgets)state.budgets={};
-  state.budgets[budgetMonth]=budget;
-  console.log('Saved budget:', JSON.stringify(budget));
+  if(!state.budgets[budgetMonth])state.budgets[budgetMonth]={income:0,cats:{},subs:{},dues:{}};
+  var b=state.budgets[budgetMonth];
+  var amt=parseFloat(document.getElementById('budgetEditAmt').value)||0;
+  var due=parseInt(document.getElementById('budgetEditDue').value)||0;
+  var t=_budgetEditTarget;
+  if(t.type==='income'){b.income=amt;}
+  else if(t.type==='cat'){if(amt)b.cats[t.name]=amt;else delete b.cats[t.name];}
+  else if(t.type==='sub'){if(amt)b.subs[t.name]=amt;else delete b.subs[t.name];if(due)b.dues[t.name]=due;else delete b.dues[t.name];}
   save();closeSheet('budgetEdit');renderBudgetMonth();
-  toast('\u2713 Budget saved');
+  toast('\u2713 Saved');
 }
 
-function copyLastMonthBudget(){
-  if(!budgetMonth)return;
-  var p=budgetMonth.split('-');
-  var prev=budgetMonthKey(new Date(parseInt(p[0]),parseInt(p[1])-2,1));
-  var prevBudget=state.budgets[prev];
-  if(!prevBudget){toast('No budget found for last month');return;}
-  // Fill in the form
-  document.getElementById('budgetIncomeInp').value=prevBudget.income||'';
-  CAT_TREE.filter(function(p){return p.id!=='income';}).forEach(function(p){
-    var el=document.getElementById('bcat_'+p.id);
-    if(el)el.value=(prevBudget.cats&&prevBudget.cats[p.name])||'';
-    var customSubs=(state.customSubs||[]).filter(function(c){return c.parent===p.name;});
-    p.subs.concat(customSubs.map(function(c){return c.name;})).forEach(function(sub){
-      var safeId=sub.replace(/\W/g,'_');
-      var sel=document.getElementById('bsub_'+safeId);
-      if(sel)sel.value=(prevBudget.subs&&prevBudget.subs[sub])||'';
-      var del=document.getElementById('bdue_'+safeId);
-      if(del)del.value=(prevBudget.dues&&prevBudget.dues[sub])||'';
-    });
-  });
-  toast('Last month copied \u2014 review and save');
+function clearSingleBudget(){
+  document.getElementById('budgetEditAmt').value='';
+  document.getElementById('budgetEditDue').value='';
+  saveSingleBudget();
 }
+
 
 checkExistingSession();
 
