@@ -1923,15 +1923,20 @@ function renderBudgetMonth(){
     var st=status(catActual,catGoal);
     var csubs=(state.customSubs||[]).filter(function(x){return x.parent===p.name;});
     var allSubs=p.subs.concat(csubs.map(function(x){return x.name;}));
+    // Compute sub total (goal) for display even when no cat-level goal
+    var subTotal=allSubs.reduce(function(s,sub){return s+parseFloat(subGoals[sub]||0);},0);
+    var displayTotal=catGoal||subTotal;
+    var bodyId='bbudget_'+p.id;
 
     h+='<div class="budget-cat-block" style="margin-bottom:7px">';
-    // Category header — always visible, click to set category total
-    h+='<div class="budget-cat-hd budget-editable-cat" data-catname="'+esc(p.name)+'" style="cursor:pointer">';
+    // Category header — shows total, arrow to toggle, tap amount to edit cat goal
+    h+='<div class="budget-cat-hd" data-bodyid="'+bodyId+'" style="cursor:pointer">';
     h+='<span class="budget-cat-icon">'+p.icon+'</span>';
     h+='<span class="budget-cat-name">'+p.name+'</span>';
-    h+='<span style="font-family:DM Mono,monospace;font-size:12px;font-weight:600;color:'+(catGoal?'#90E8AA':'rgba(255,255,255,0.3)')+'">'+fmt(catGoal)+'</span>';
+    h+='<span class="budget-editable-cat" data-catname="'+esc(p.name)+'" style="font-family:DM Mono,monospace;font-size:12px;font-weight:600;color:'+(displayTotal?'#90E8AA':'rgba(255,255,255,0.3)')+'">'+fmt(displayTotal)+'</span>';
+    h+='<span class="budget-cat-arrow" style="margin-left:6px">&#x203A;</span>';
     h+='</div>';
-    // Category bar (if goal set)
+    // Category bar (if cat-level goal set)
     if(catGoal){
       h+='<div style="padding:4px 13px 8px">';
       h+='<div class="budget-bar-track"><div class="budget-bar-fill '+st+'" style="width:'+bar(catActual,catGoal)+'%"></div></div>';
@@ -1942,8 +1947,8 @@ function renderBudgetMonth(){
       h+='<div class="bstat"><span class="bstat-val '+(catActual<=catGoal?'good':'bad')+'">'+fmt(catGoal-catActual,true)+'</span><span class="bstat-label">Left</span></div>';
       h+='</div></div>';
     }
-    // Sub-category rows (always shown)
-    h+='<div style="border-top:1px solid var(--border-soft)">';
+    // Sub-category rows (collapsed by default, toggled by arrow)
+    h+='<div class="budget-cat-body" id="'+bodyId+'">';
     allSubs.forEach(function(sub){
       var sg=parseFloat(subGoals[sub]||0);
       var sa=subActuals[sub]||0;
@@ -1977,10 +1982,19 @@ function renderBudgetMonth(){
   document.getElementById('homeBody').innerHTML=h;
   document.getElementById('homeBody').onclick=function(e){
     if(e.target.closest('#budgetIncomeHd')){openBudgetSetSheet('income','Income',null);return;}
-    var cr=e.target.closest('.budget-editable-cat');
-    if(cr){openBudgetSetSheet('cat',cr.dataset.catname,null);return;}
+    // Tap sub row -> edit sub
     var sr=e.target.closest('.budget-editable-sub');
     if(sr){openBudgetSetSheet('sub',sr.dataset.sub,sr.dataset.parent);return;}
+    // Tap cat total amount -> edit cat goal
+    var cr=e.target.closest('.budget-editable-cat');
+    if(cr){openBudgetSetSheet('cat',cr.dataset.catname,null);return;}
+    // Tap cat header (not amount) -> toggle subs
+    var hd=e.target.closest('.budget-cat-hd[data-bodyid]');
+    if(hd){
+      var b=document.getElementById(hd.dataset.bodyid);
+      var a=hd.querySelector('.budget-cat-arrow');
+      if(b){var op=b.classList.toggle('open');if(a)a.classList.toggle('open',op);}
+    }
   };
 }
 
