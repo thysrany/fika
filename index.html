@@ -1838,7 +1838,10 @@ function renderBudgetMonth(){
   // Load budget — always default to empty objects so nothing crashes
   if(!state.budgets)state.budgets={};
   var bud=state.budgets[budgetMonth]||{};
-  var incGoal   = parseFloat(bud.income||0);
+  var incSubGoals = bud.incSubs||{};
+  var incGoal   = Object.keys(incSubGoals).length>0
+    ? Object.keys(incSubGoals).reduce(function(s,k){return s+parseFloat(incSubGoals[k]||0);},0)
+    : parseFloat(bud.income||0);
   var catGoals  = bud.cats||{};
   var subGoals  = bud.subs||{};
   var dueDays   = bud.dues||{};
@@ -1848,12 +1851,17 @@ function renderBudgetMonth(){
   var mFrom=new Date(parseInt(mp[0]),parseInt(mp[1])-1,1);
   var mTo  =new Date(parseInt(mp[0]),parseInt(mp[1]),0,23,59,59);
   var acctId=(document.getElementById('homeAcctFilter')||{}).value||'all';
-  var incActual=0, catActuals={}, subActuals={};
+  var incActual=0, incSubActuals={}, catActuals={}, subActuals={};
   state.manualTxs.forEach(function(t){
     if(acctId!=='all'&&t.accountId!==acctId)return;
     var d=new Date(t.date+'T00:00:00');
     if(d<mFrom||d>mTo)return;
-    if(t.type==='income'){incActual+=parseFloat(t.amount);return;}
+    if(t.type==='income'){
+      incActual+=parseFloat(t.amount);
+      var sub=t.category||'Other Income';
+      incSubActuals[sub]=(incSubActuals[sub]||0)+parseFloat(t.amount);
+      return;
+    }
     var sub=t.category||'Miscellaneous';
     var par=getParentOf(sub)||'Other';
     subActuals[sub]=(subActuals[sub]||0)+parseFloat(t.amount);
@@ -1897,23 +1905,47 @@ function renderBudgetMonth(){
   h+='<div class="bh-card"><span class="bh-val dim">'+noGoal+'</span><span class="bh-label">No Goal Set</span></div>';
   h+='</div>';
 
-  // — Income row —
+  // — Income block (collapsible, per-sub goals) —
+  var incCat=CAT_TREE.find(function(p){return p.id==='income';})||{subs:[],icon:'\uD83D\uDCBC'};
+  var incCatSubs=incCat.subs.concat((state.customSubs||[]).filter(function(x){return x.parent==='Income';}).map(function(x){return x.name;}));
+  var incStatus=incGoal?(incActual>=incGoal?'good':'warn'):'dim';
+  h+='<span class="section-label">Income</span>';
   h+='<div class="budget-cat-block" style="margin-bottom:10px">';
-  h+='<div class="budget-cat-hd" id="budgetIncomeHd" style="cursor:pointer">';
-  h+='<span class="budget-cat-icon">\uD83D\uDCBC</span>';
-  h+='<span class="budget-cat-name">Income Goal</span>';
-  h+='<span style="font-family:DM Mono,monospace;font-size:12px;color:#90E8AA;font-weight:600">'+fmt(incGoal)+'</span>';
-  h+='<span style="font-size:10px;color:rgba(255,255,255,0.4);margin-left:6px">tap to edit</span>';
+  h+='<div class="budget-cat-hd" data-bodyid="bbudget_income" style="cursor:pointer">';
+  h+='<span class="budget-cat-icon">'+incCat.icon+'</span>';
+  h+='<span class="budget-cat-name">Income</span>';
+  h+='<span style="font-family:DM Mono,monospace;font-size:12px;font-weight:700;background:rgba(255,255,255,0.92);color:var(--text);padding:2px 9px;border-radius:20px">'+fmt(incGoal)+'</span>';
+  h+='<span class="budget-cat-arrow" style="margin-left:6px">&#x203A;</span>';
   h+='</div>';
   if(incGoal){
-    h+='<div style="padding:0 13px 10px">';
-    h+='<div class="budget-bar-track"><div class="budget-bar-fill '+(incActual>=incGoal?'good':'warn')+'" style="width:'+bar(incActual,incGoal)+'%"></div></div>';
-    h+='<div style="display:flex;justify-content:space-between;font-size:10px;font-family:DM Mono,monospace;margin-top:3px">';
-    h+='<span style="color:rgba(255,255,255,0.5)">actual: '+fmt(incActual)+'</span>';
-    h+='<span style="color:rgba(255,255,255,0.5)">'+Math.round(bar(incActual,incGoal))+'%</span>';
+    h+='<div style="padding:4px 13px 8px">';
+    h+='<div class="budget-bar-track"><div class="budget-bar-fill '+incStatus+'" style="width:'+bar(incActual,incGoal)+'%"></div></div>';
+    h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;margin-top:4px">';
+    h+='<div class="bstat"><span class="bstat-val dim">'+fmt(incGoal)+'</span><span class="bstat-label">Goal</span></div>';
+    h+='<div class="bstat"><span class="bstat-val good">'+fmt(incActual)+'</span><span class="bstat-label">Actual</span></div>';
+    h+='<div class="bstat"><span class="bstat-val">'+bar(incActual,incGoal)+'%</span><span class="bstat-label">Received</span></div>';
+    h+='<div class="bstat"><span class="bstat-val '+(incActual>=incGoal?'good':'warn')+'">'+fmt(incActual-incGoal,true)+'</span><span class="bstat-label">Variance</span></div>';
     h+='</div></div>';
   }
-  h+='</div>';
+  h+='<div class="budget-cat-body" id="bbudget_income">';
+  incCatSubs.forEach(function(sub){
+    var sg=parseFloat(incSubGoals[sub]||0);
+    var sa=incSubActuals[sub]||0;
+    var sst=incGoal?(sa>=sg&&sg>0?'good':sa>0?'warn':'dim'):'dim';
+    h+='<div class="budget-sub-row budget-editable-incsub" data-sub="'+esc(sub)+'">';
+    h+='<span class="budget-sub-name">'+esc(sub)+'</span>';
+    if(sg){
+      h+='<div class="budget-sub-bar-col">';
+      h+='<div class="budget-sub-track"><div class="budget-sub-fill '+(sa>=sg?'good':sa/sg>=0.8?'warn':'dim')+'" style="width:'+bar(sa,sg)+'%"></div></div>';
+      h+='<span class="budget-sub-pct">'+bar(sa,sg)+'%</span>';
+      h+='</div>';
+      h+='<span class="budget-sub-amt '+(sa>=sg?'good':'warn')+'">'+fmt(sg)+'</span>';
+    } else {
+      h+='<span style="font-size:10px;color:var(--text4);margin-left:auto">—</span>';
+    }
+    h+='</div>';
+  });
+  h+='</div></div>';
 
   // — Category blocks (always expanded) —
   h+='<span class="section-label">Expense Categories</span>';
@@ -1981,7 +2013,8 @@ function renderBudgetMonth(){
 
   document.getElementById('homeBody').innerHTML=h;
   document.getElementById('homeBody').onclick=function(e){
-    if(e.target.closest('#budgetIncomeHd')){openBudgetSetSheet('income','Income',null);return;}
+    var isr=e.target.closest('.budget-editable-incsub');
+    if(isr){openBudgetSetSheet('incsub',isr.dataset.sub,null);return;}
     // Tap sub row -> edit sub
     var sr=e.target.closest('.budget-editable-sub');
     if(sr){openBudgetSetSheet('sub',sr.dataset.sub,sr.dataset.parent);return;}
@@ -2009,15 +2042,16 @@ function openBudgetSetSheet(type,name,parentName){
   if(!state.budgets)state.budgets={};
   if(!state.budgets[budgetMonth])state.budgets[budgetMonth]={income:0,cats:{},subs:{},dues:{}};
   var bud=state.budgets[budgetMonth];
-  var label=type==='income'?'Income Goal':name+(parentName?' ('+parentName+')':'');
+  var label=type==='income'?'Income Goal':type==='incsub'?name+' (Income)':name+(parentName?' ('+parentName+')':'');
   document.getElementById('budgetEditTitle').textContent=label;
   document.getElementById('budgetEditCatName').textContent='';
-  var amt=type==='income'?bud.income:type==='cat'?(bud.cats||{})[name]:(bud.subs||{})[name];
+  var amt=type==='income'?bud.income:type==='incsub'?(bud.incSubs||{})[name]:type==='cat'?(bud.cats||{})[name]:(bud.subs||{})[name];
   var due=type==='sub'?(bud.dues||{})[name]:'';
   document.getElementById('budgetEditAmt').value=amt||'';
   document.getElementById('budgetEditDue').value=due||'';
   var dueGroup=document.getElementById('budgetEditDue').closest('.form-group');
   if(dueGroup)dueGroup.style.display=type==='sub'?'':'none';
+  var dueLabel=dueGroup?dueGroup.previousElementSibling:null;
   openSheet('budgetEdit');
   setTimeout(function(){document.getElementById('budgetEditAmt').select();},100);
 }
@@ -2034,6 +2068,7 @@ function saveSingleBudget(){
   var due=parseInt(document.getElementById('budgetEditDue').value)||0;
   var t=_budgetTarget;
   if(t.type==='income'){bud.income=amt;}
+  else if(t.type==='incsub'){if(!bud.incSubs)bud.incSubs={};if(amt)bud.incSubs[t.name]=amt;else delete bud.incSubs[t.name];}
   else if(t.type==='cat'){if(amt)bud.cats[t.name]=amt;else delete bud.cats[t.name];}
   else{if(amt)bud.subs[t.name]=amt;else delete bud.subs[t.name];if(due)bud.dues[t.name]=due;else delete bud.dues[t.name];}
   save();
